@@ -1,2 +1,2 @@
 #!/bin/bash
-grep -lr "password =" "$1"  2>/dev/null
+grep -Rl "password =" "$1"  2>/dev/null
