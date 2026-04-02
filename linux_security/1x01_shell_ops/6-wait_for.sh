@@ -1,5 +1,5 @@
 #!/bin/bash
-until nc $1 80 ;do
+until nc -z $1 80 ;do
 echo 'Waiting...'
     sleep 1
 done
