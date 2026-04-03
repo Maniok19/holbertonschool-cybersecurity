@@ -1,7 +1,7 @@
 #!/bin/bash
 if command -v "$1";then
 echo "not instaled"
-apt install "$1"
+apt-get install -y "$1"
 fi
 
 if grep -q "minclass" "$2";then
