@@ -13,4 +13,4 @@ else
     echo "minlen = 14" >> "$2"
     echo "minclass = 3" >> "$2"
 fi
-# pam_pwquality\.so
+# pam_pwquality.so
