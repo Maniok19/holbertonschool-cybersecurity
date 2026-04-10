@@ -1,2 +1,2 @@
 #!/bin/bash
-ps -q $1 -o ppid
+ps -o ppid= -p "$PID" | tr -d ' '
