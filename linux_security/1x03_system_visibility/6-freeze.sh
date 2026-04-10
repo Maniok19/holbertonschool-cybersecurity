@@ -1,2 +1,2 @@
 #!/bin/bash
-kill -STOP "$1"
+kill -SIGSTOP "$1"
