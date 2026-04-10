@@ -1,3 +1,2 @@
 #!/bin/bash
-ps | awk '{print $1" "$4}'
-# -eo
+ps -eo pid,command | awk '{print $1" "$2}'
