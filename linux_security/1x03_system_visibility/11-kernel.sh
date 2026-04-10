@@ -1,2 +1,2 @@
 #!/bin/bash
-grep "segfault" $1
+grep -i segfault $1
