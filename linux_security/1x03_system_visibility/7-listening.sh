@@ -1,2 +1,1 @@
-#!/bin/bash
-ss -lnt4 | awk 'NR>1{print $4}' |awk -F: '{print $NF}' | sort -n
+ss -lnt4 | awk 'NR>1 {split($4,a,":"); print a[length(a)]}' | sort -n
