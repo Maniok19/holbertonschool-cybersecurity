@@ -1,2 +1,2 @@
 #!/bin/bash
-cat "/proc/$1/environ" | tr '\0' '\n'
+tr '\0' '\n' < /proc/$1/environ
