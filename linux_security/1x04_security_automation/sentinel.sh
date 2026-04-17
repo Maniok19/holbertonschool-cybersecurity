@@ -26,6 +26,24 @@ check_integrity()
     done
 }
 
+check_ports()
+{
+    PORTS=$(ss -Htnl | awk '{print $4}' | awk -F: '{print $NF}' | sort -u)
+    for port in $PORTS; do
+        isallow=false
+        for allowed in "${ALLOWED_PORTS[@]}"; do
+            if [ "$port" == "$allowed" ]; then
+                isallow=true
+            fi
+        done
+    
+        if [ "$isallow" = false ]; then
+            fuser -k -n tcp "$port" > /dev/null 2>&1
+            echo "ALERT: Killed rogue process on port $port"
+        fi
+    done
+}
+
 if [ ! -f "./sentinel.conf" ] ;then
 exit 1
 
@@ -37,3 +55,4 @@ exit 2
 fi
 check_services
 check_integrity
+check_ports
