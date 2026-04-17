@@ -1,0 +1,13 @@
+[Unit]
+Description=Sentinel Security Agent
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/student/sentinel.sh
+WorkingDirectory=/home/student
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
