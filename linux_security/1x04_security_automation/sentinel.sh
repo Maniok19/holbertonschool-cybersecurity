@@ -20,7 +20,7 @@ check_integrity()
         if [ "$GOLD" == "$MD5" ]; then
             echo "OK: $watch integrity verified"
         else
-            cat "/var/backups/sentinel/$(basename "$watch").gold" > $watch
+            cp "/var/backups/sentinel/$(basename "$watch").gold" $watch
             echo  "FIXED: Restored $watch"
         fi
     done
