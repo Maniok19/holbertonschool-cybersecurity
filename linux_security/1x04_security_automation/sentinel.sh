@@ -36,10 +36,12 @@ check_ports()
                 isallow=true
             fi
         done
-    
         if [ "$isallow" = false ]; then
-            fuser -k -n tcp "$port" > /dev/null 2>&1
-            echo "ALERT: Killed rogue process on port $port"
+        PID=$(ss -lptn "sport = :$port" | grep -oP 'pid=\K[0-9]+' | head -n 1)
+            if [ -n "$PID" ]; then                
+                kill -9 "$PID"
+                echo "ALERT: Killed rogue process on port $port"
+            fi
         fi
     done
 }
