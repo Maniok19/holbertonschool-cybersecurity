@@ -56,7 +56,7 @@ log() {
     local target=$2
     local status=$3
     local details=$4
-    local timestamp=$(date -u +"%FT%TZ")
+    local timestamp=$(date -u +%FT%TZ)
 
     local json_entry="{\"timestamp\": \"$timestamp\", \"component\": \"$component\", \"target\": \"$target\", \"status\": \"$status\", \"details\": \"$details\"}"
 
