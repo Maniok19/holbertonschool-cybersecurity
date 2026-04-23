@@ -33,10 +33,23 @@ ensure_sysctl_setting()
     fi
     log INFO "Updated $SYSCTL_FILE: $key = $value"
 }
+apply_sysctl_runtime()
+{
+    local key="$1"
+    local value="$2"
+
+    if sysctl -w "${key}=${value}" >/dev/null 2>&1; then
+        log INFO "Applied runtime sysctl: $key = $value"
+    else
+        log WARN "Skipped runtime sysctl: $key = $value in $SYSCTL_FILE."
+    fi
+}
 network_main()
 {
     write_firewall_policy
     ensure_sysctl_setting "net.ipv4.ip_forward" "0"
     ensure_sysctl_setting "net.ipv4.icmp_echo_ignore_all" "1"
+    apply_sysctl_runtime "net.ipv4.ip_forward" "0"
+    apply_sysctl_runtime "net.ipv4.icmp_echo_ignore_all" "1"
     log INFO "Kernel parameters updated in $SYSCTL_FILE"
 }

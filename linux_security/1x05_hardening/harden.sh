@@ -1,4 +1,8 @@
 #!/bin/bash
+#if pgrep -x apt-get >/dev/null; then
+#    echo "apt-get is already running; waiting..."
+#    wait
+#fi
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 check_root()

@@ -1,5 +1,10 @@
 #!/bin/bash
-
+apt_purger()
+{
+    if dpkg -s "$1" >/dev/null 2>&1 ; then
+        apt-get purge -y "$1"
+    fi
+}
 report_main()
 {
     local timestamp
@@ -9,7 +14,7 @@ report_main()
         echo "==============================================="
         echo " HARDENING AUDIT REPORT - $timestamp"
         echo "==============================================="
-        echo
+        echo "logs in $LOG_FILE"
         echo "[INFO] Hardening procedure completed successfully."
         echo "[INFO] SSH configured on port $SSH_PORT."
         echo "[INFO] Firewall policy created: ports $SSH_PORT, $ALLOW_HTTP, $ALLOW_HTTPS ALLOWED."
@@ -52,17 +57,20 @@ system_main()
     export DEBIAN_FRONTEND=noninteractive
     export NEEDRESTART_MODE=a
     export NEEDRESTART_SUSPEND=1
+    echo "running apt-get update..."
     apt-get update -y >/dev/null 2>&1
-    local updates_available
-    updates_available=$(apt-get -s upgrade | grep -E "^[0-9]+ upgraded" | head -n 1 || true)
-    if [[ "$updates_available" == "0 upgraded"* ]]; then
+    if apt-get -s upgrade | grep -q "^0 upgraded" ; then
         log WARN "Package updates skipped (already up to date)."
     else
+        echo "running apt-get upgrade..."
         apt-get upgrade -y >/dev/null 2>&1
         log INFO "System packages updated."
     fi
-    apt-get purge -y telnet ftp netcat-traditional >/dev/null 2>&1
+    for pkg in $REMOVED_PACKAGES; do
+        apt_purger "$pkg"
+    done
     log INFO "Removed: telnet, ftp, netcat-traditional."
+    echo "running apt-get install..."
     apt-get install -y auditd fail2ban >/dev/null 2>&1
     log INFO "Installed: auditd, fail2ban."
 }
