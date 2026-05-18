@@ -1,2 +1,2 @@
 #!/bin/bash
-echo "$((m=(0xFFFFFFFF<<(32-$1))&0xFFFFFFFF,m>>24&0xFF)).$((m>>16&0xFF)).$((m>>8&0xFF)).$((m&0xFF))"
+m=$(( (0xFFFFFFFF<<(32-$1))&0xFFFFFFFF )); echo "$((m>>24&255)).$((m>>16&255)).$((m>>8&255)).$((m&255))"
