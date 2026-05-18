@@ -1,0 +1,2 @@
+#!/bin/bash
+echo "$((m=(0xFFFFFFFF<<(32-$1))&0xFFFFFFFF,m>>24&0xFF)).$((m>>16&0xFF)).$((m>>8&0xFF)).$((m&0xFF))"
