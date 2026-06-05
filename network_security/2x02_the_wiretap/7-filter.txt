@@ -1,1 +1,1 @@
-ip.addr == 10.10.10.80 && http.response.code == 200
+ip.dst == 10.10.10.80 && tcp.flags.syn == 1 && tcp.flags.ack == 0
