@@ -1,0 +1,3 @@
+ip.addr == 10.10.10.99 && tcp.dstport == 23
+dns || http
+tcp && tcp.srcport != 22 && tcp.dstport != 22
