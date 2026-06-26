@@ -1,0 +1,1 @@
+exfil-done.cmd-relay.darknet-c2.io

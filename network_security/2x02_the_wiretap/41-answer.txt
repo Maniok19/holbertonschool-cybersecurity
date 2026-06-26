@@ -1,0 +1,1 @@
+10.10.10.99||exfil-done.cmd-relay.darknet-c2.io||tcp.flags.syn == 1 and tcp.flagsack == 0
