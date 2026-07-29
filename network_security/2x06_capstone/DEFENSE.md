@@ -26,11 +26,9 @@ Before: flat network. No firewall. Port 3000 (openvscode) gave root access to ev
 
 After: three zones.
 
-| Zone | Can reach |
-|------|-----------|
-| WAN | Nothing (dropped) |
-| DMZ | LAN only via specific ports |
-| LAN | Only itself |
+- WAN: Nothing (dropped)
+- DMZ: LAN only via specific ports
+- LAN: Only itself
 
 Port 3000 and 3001 are removed. Attacker cannot get in anymore.
 

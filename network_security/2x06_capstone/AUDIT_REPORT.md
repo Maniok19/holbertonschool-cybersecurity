@@ -74,12 +74,10 @@ systemctl list-timers --all
 * **ARP Cache (`ip neighbor`):** Gateway `10.42.0.1` reachable (`0a:b0:93:32:a4:d0`)
 
 ## 3. Attack Surface (Listening Services)
-| Port | Protocol | Service | PID | Process Name | Listening Address |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| 21 | TCP | FTP (`vsftpd`) | 63 | `vsftpd` | `*:21` |
-| 22 | TCP | SSH (`sshd`) | 89 | `sshd` | `0.0.0.0:22`, `[::]:22` |
-| 3000 | TCP | Web App (`node`) | 105 | `node` | `0.0.0.0:3000` |
-| 3001 | TCP | Web Terminal (`ttyd`) | 91 | `ttyd` | `0.0.0.0:3001` |
+- Port 21 (TCP): FTP (`vsftpd`) — PID 63, `*:21`
+- Port 22 (TCP): SSH (`sshd`) — PID 89, `0.0.0.0:22`, `[::]:22`
+- Port 3000 (TCP): Web App (`node`) — PID 105, `0.0.0.0:3000`
+- Port 3001 (TCP): Web Terminal (`ttyd`) — PID 91, `0.0.0.0:3001`
 
 ## 4. Security Controls
 * **Firewall / AppArmor / SELinux:** Not managed via standard `systemd` or user-space tooling; containerized environment delegates network filtering to host infrastructure.
@@ -93,17 +91,15 @@ systemctl list-timers --all
 
 ## 6. Running Services
 
-| PID | User | Parent PID | Command / Service | Listening / Target | Security Notes |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **1** | `root` | 0 | Container Init Shell | N/A | Changes root password on boot via hostname |
-| **27** | `root` | 1 | `/etc/run.sh` | N/A | Supervisor script for web services |
-| **63** | `root` | 1 | `/usr/sbin/vsftpd` | Port 21 | FTP service running with elevated permissions |
-| **78** | `root` | 1 | `/usr/sbin/cron -P` | N/A | Triggers recurring outbound `curl` requests |
-| **89 / 160** | `root / student` | 1 / 149 | `sshd: student@pts/0` | Port 22 | Active SSH session for user `student` |
-| **91** | `root` | 27 | `ttyd` | Port 3001 | Passwords exposed in command-line arguments |
-| **105** | `root` | 98 | `openvscode-server` | Port 3000 | Token exposed in command-line arguments |
-| **53614** | `root` | 161 | `su root` | N/A | Privilege escalation from `student` to `root` |
-| **47614** | `student` | 1 | `gpg-agent` | Local Socket | GPG daemon for user key store |
+- PID 1 (`root`): Container Init Shell — parent 0, N/A. Changes root password on boot via hostname
+- PID 27 (`root`): `/etc/run.sh` — parent 1, N/A. Supervisor script for web services
+- PID 63 (`root`): `/usr/sbin/vsftpd` — parent 1, Port 21. FTP service with elevated permissions
+- PID 78 (`root`): `/usr/sbin/cron -P` — parent 1, N/A. Recurring outbound `curl` requests
+- PID 89 / 160 (`root` / `student`): `sshd: student@pts/0` — parent 1 / 149, Port 22. Active SSH session for `student`
+- PID 91 (`root`): `ttyd` — parent 27, Port 3001. Passwords exposed in command-line args
+- PID 105 (`root`): `openvscode-server` — parent 98, Port 3000. Token exposed in command-line args
+- PID 53614 (`root`): `su root` — parent 161, N/A. Privilege escalation from `student` to `root`
+- PID 47614 (`student`): `gpg-agent` — parent 1, Local Socket. GPG daemon for user key store
 
 ---
 
@@ -159,10 +155,8 @@ systemctl list-timers --all
 
 ## Summary Comparison Table
 
-| Feature / Category | Documented Expectation | Audit Reality |
-| :--- | :--- | :--- |
-| IP Subnet | `192.168.1.x/24` | `10.42.0.0/16` (`eth1`), `169.254.0.0/22` (`eth0`)
-| System Architecture | Standard Linux Server | Container (PID 1 = `/bin/sh`, no systemd)
-| Active Ports | Ports 21 (FTP), 22 (SSH) | Ports 21, 22, 3000 (`code-server`), 3001 (`ttyd`)
-| Active Users | `root` via SSH | `root` and `student`
-| Scheduled Tasks | None | `/etc/cron.d/logicorp` executing outbound `curl`
+- IP Subnet: expected `192.168.1.x/24`, reality `10.42.0.0/16` (`eth1`), `169.254.0.0/22` (`eth0`)
+- System Architecture: expected Standard Linux Server, reality Container (PID 1 = `/bin/sh`, no systemd)
+- Active Ports: expected Ports 21 (FTP), 22 (SSH), reality Ports 21, 22, 3000 (`code-server`), 3001 (`ttyd`)
+- Active Users: expected `root` via SSH, reality `root` and `student`
+- Scheduled Tasks: expected None, reality `/etc/cron.d/logicorp` executing outbound `curl`

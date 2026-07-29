@@ -16,11 +16,9 @@ UDP :51820        <- WireGuard -> Finance (10.99.0.3)
 
 ## IP Addressing
 
-| Peer            | VPN IP      | Can Access              |
-|-----------------|-------------|-------------------------|
-| Gateway         | 10.99.0.1   | All (itself)            |
-| Admin Laptop    | 10.99.0.2   | SSH :22, DB :3306       |
-| Finance Remote  | 10.99.0.3   | FTPS :21 only           |
+- Gateway: VPN IP 10.99.0.1 — All (itself)
+- Admin Laptop: VPN IP 10.99.0.2 — SSH :22, DB :3306
+- Finance Remote: VPN IP 10.99.0.3 — FTPS :21 only
 
 ## Server Config (/etc/wireguard/wg0.conf)
 
