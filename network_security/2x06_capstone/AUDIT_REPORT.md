@@ -60,18 +60,18 @@ systemctl list-timers --all
 
 
 ## 1. System Information
-* **Operating System:** Ubuntu 22.04.5 LTS (Jammy Jellyfish)
-* **Kernel Version:** 6.1.176 (x86_64)
-* **Hostname:** 2d5ec77ad8df42e1a63d328b3e48b535-2377118072
-* **Uptime:** 1 hour, 24 minutes (Load Average: 0.03, 0.03, 0.01)
-* **Init System:** Container Runtime / Non-systemd Environment (PID 1 is `/bin/sh`)
+* Operating System: Ubuntu 22.04.5 LTS (Jammy Jellyfish)
+* Kernel Version: 6.1.176 (x86_64)
+* Hostname: 2d5ec77ad8df42e1a63d328b3e48b535-2377118072
+* Uptime: 1 hour, 24 minutes (Load Average: 0.03, 0.03, 0.01)
+* Init System: Container Runtime / Non-systemd Environment (PID 1 is `/bin/sh`)
 
 ## 2. Network Topology
-* **Loopback (`lo`):** `127.0.0.1/8`
-* **Internal Interface (`eth0`):** `169.254.172.2/22`
-* **Primary Interface (`eth1`):** `10.42.66.225/16`
-* **Default Route:** `10.42.0.1` via `eth1`
-* **ARP Cache (`ip neighbor`):** Gateway `10.42.0.1` reachable (`0a:b0:93:32:a4:d0`)
+* Loopback (`lo`): `127.0.0.1/8`
+* Internal Interface (`eth0`): `169.254.172.2/22`
+* Primary Interface (`eth1`): `10.42.66.225/16`
+* Default Route: `10.42.0.1` via `eth1`
+* ARP Cache (`ip neighbor`): Gateway `10.42.0.1` reachable (`0a:b0:93:32:a4:d0`)
 
 ## 3. Attack Surface (Listening Services)
 - Port 21 (TCP): FTP (`vsftpd`) — PID 63, `*:21`
@@ -80,13 +80,13 @@ systemctl list-timers --all
 - Port 3001 (TCP): Web Terminal (`ttyd`) — PID 91, `0.0.0.0:3001`
 
 ## 4. Security Controls
-* **Firewall / AppArmor / SELinux:** Not managed via standard `systemd` or user-space tooling; containerized environment delegates network filtering to host infrastructure.
+* Firewall / AppArmor / SELinux: Not managed via standard `systemd` or user-space tooling; containerized environment delegates network filtering to host infrastructure.
 
 ## 5. User Accounts & Privilege Level
-* **Interactive Accounts (`/etc/passwd`):**
+* Interactive Accounts (`/etc/passwd`):
   * `root` (UID: 0) - Shell: `/bin/bash`
   * `student` (UID: 1000) - Shell: `/bin/bash`
-* **Sudo Rights:**
+* Sudo Rights:
   * User `root` has full permissions: `(ALL : ALL) ALL`
 
 ## 6. Running Services
@@ -105,33 +105,33 @@ systemctl list-timers --all
 
 
 ## 7. Scheduled Tasks
-* **Cron Config File:** `/etc/crontab` configured with standard hourly/daily/weekly schedules.
-* **Custom Cron Directory (`/etc/cron.d/`):**
+* Cron Config File: `/etc/crontab` configured with standard hourly/daily/weekly schedules.
+* Custom Cron Directory (`/etc/cron.d/`):
   * `e2scrub_all`
   * `logicorp`
 
 ## 8. Discrepancies
 
 ### 1. Network Subnet and IP Configuration
-* **Documented State:** Document C specifies a flat network operating on the **`192.168.1.x`** subnet, with `eth0` designated as WAN and `eth1` connected to the internal switch.
-* **Audit Reality:** 
-  * `eth0` is configured with a Link-Local address (**`169.254.172.2/22`**).
-  * `eth1` is configured on a **`10.42.66.225/16`** subnet with default gateway `10.42.0.1`.
+* Documented State: Document C specifies a flat network operating on the `192.168.1.x` subnet, with `eth0` designated as WAN and `eth1` connected to the internal switch.
+* Audit Reality: 
+  * `eth0` is configured with a Link-Local address (`169.254.172.2/22`).
+  * `eth1` is configured on a `10.42.66.225/16` subnet with default gateway `10.42.0.1`.
   * The documented `192.168.1.x` subnet is completely absent from the gateway's network interfaces.
 
 ---
 
 ### 2. Undocumented Listening Web Services
-* **Documented State:** Document C and B state that only **SSH (Port 22)** and **FTP (Port 21)** are active on the gateway.
-* **Audit Reality:** Two additional undocumented, high-risk web services are publicly exposed on `0.0.0.0`:
-  * **Port 3000 (TCP):** Running `openvscode-server` (Web IDE) under the `root` user, with access tokens exposed in plain text within command-line process arguments.
-  * **Port 3001 (TCP):** Running `ttyd` (Web Terminal) under the `root` user, with cleartext passwords exposed directly in process arguments.
+* Documented State: Document C and B state that only SSH (Port 22) and FTP (Port 21) are active on the gateway.
+* Audit Reality: Two additional undocumented, high-risk web services are publicly exposed on `0.0.0.0`:
+  * Port 3000 (TCP): Running `openvscode-server` (Web IDE) under the `root` user, with access tokens exposed in plain text within command-line process arguments.
+  * Port 3001 (TCP): Running `ttyd` (Web Terminal) under the `root` user, with cleartext passwords exposed directly in process arguments.
 
 ---
 
 ### 3. System Environment and Architecture
-* **Documented State:** Document A and D describe a traditional, dedicated Linux Gateway server managing physical routing, firewalling, and network switches.
-* **Audit Reality:** The server is running in a **Containerized Environment** (PID 1 is `/bin/sh`, not `systemd`). 
+* Documented State: Document A and D describe a traditional, dedicated Linux Gateway server managing physical routing, firewalling, and network switches.
+* Audit Reality: The server is running in a Containerized Environment (PID 1 is `/bin/sh`, not `systemd`). 
   * Standard service management tools (`systemctl`, `ufw`) fail or are non-functional.
   * Network security filtering and firewall controls are delegated to the underlying host infrastructure rather than local kernel tools.
 

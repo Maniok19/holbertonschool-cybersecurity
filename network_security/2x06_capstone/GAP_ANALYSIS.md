@@ -1,8 +1,8 @@
 # Gap Analysis Report: LogiCorp Gateway & Network Security Overhaul
 
-**Prepared By:** Mano Delcourt  
-**Prepared For:** LogiCorp CEO  
-**Date:** 27 July 2026
+Prepared By: Mano Delcourt  
+Prepared For: LogiCorp CEO  
+Date: 27 July 2026
 
 ---
 

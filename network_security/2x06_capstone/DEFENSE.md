@@ -2,7 +2,7 @@
 
 ## Challenge 1: FTP vs SFTP
 
-**"Why not force SFTP?"**
+"Why not force SFTP?"
 
 Finance uses old software. It only does FTP. Changing it costs money and time. The client said "FTP must work."
 
@@ -20,7 +20,7 @@ Phase 2: migrate to SFTP when budget allows.
 
 ## Challenge 2: Segmentation
 
-**"How does this stop lateral movement?"**
+"How does this stop lateral movement?"
 
 Before: flat network. No firewall. Port 3000 (openvscode) gave root access to everything.
 
@@ -40,7 +40,7 @@ Defense in depth: firewall drops bad traffic, TLS encrypts data, SSH bans brute-
 
 ## Challenge 3: Single Point of Failure
 
-**"Gateway goes down, what then?"**
+"Gateway goes down, what then?"
 
 Yes, it is a single point. High availability was not in scope. Client wanted security first.
 
