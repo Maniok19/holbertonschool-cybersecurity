@@ -1,0 +1,16 @@
+#include <tunables/global>
+
+/usr/bin/sh_backup {
+  # Allow reading and mapping its own binary
+  /usr/bin/sh_backup mr,
+
+  # Read-only access to the configuration file
+  /etc/sh_backup.conf r,
+
+  # Read, write, and create in /var/backups/ and all subdirectories
+  /var/backups/ rw,
+  /var/backups/** rw,
+
+  # Write access to the log file
+  /var/log/sh_backup.log w,
+}
