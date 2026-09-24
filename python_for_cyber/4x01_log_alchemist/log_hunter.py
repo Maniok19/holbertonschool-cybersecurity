@@ -8,6 +8,7 @@ def read_stream(file_path: str):
         for line in f:
             yield line
 
+
 def main():
     parser = argparse.ArgumentParser(prog='log_hunter.py',
                                      description='The program is good',
@@ -29,6 +30,7 @@ def main():
         print(f"[ERROR] Permission denied: {args.file}")
         sys.exit(1)
     print(f"[*] Lines read: {count}")
+
 
 if __name__ == '__main__':
     main()
