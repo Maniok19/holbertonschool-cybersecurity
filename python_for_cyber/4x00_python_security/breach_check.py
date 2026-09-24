@@ -6,7 +6,16 @@ import logging
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 LINE_RE = re.compile(r"^([^:]+):(.+)$")
+COMMON_LIST = {"password", "123456", "12345678", "qwerty", "abc123", "letmein", "admin"}
 
+def check_policy(password: str) -> str:
+    if len(password) < 8:
+        return "WEAK"
+    if not any(c.isdigit() for c in password):
+        return "WEAK"
+    if password.lower() in COMMON_LIST:
+        return "WEAK"
+    return "COMPLIANT"
 
 def setup_logging():
     logger = logging.getLogger()
@@ -58,13 +67,16 @@ def clean_data(lines: list) -> list:
     cleaned = []
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("#"):
+        if not stripped or stripped.startswith("#"):
             continue
         logging.debug(f"Starting regex check on line {i}...")
         if not validate_line(stripped):
             continue
+        email, password = stripped.split(":", 1)
+        status = check_policy(password)
+        logging.debug(f"Line {i}: policy check -> {status}")
+        if status == "WEAK":
+            logging.warning(f"Line {i}: weak password detected for {email}")
         cleaned.append(stripped)
     return cleaned
 
