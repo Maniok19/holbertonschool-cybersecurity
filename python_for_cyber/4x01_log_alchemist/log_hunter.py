@@ -4,6 +4,7 @@ import re
 import argparse
 from collections import Counter, defaultdict
 from datetime import datetime
+import json
 
 
 APACHE_RE = re.compile(
@@ -64,6 +65,20 @@ class LogEntry:
         self.source = source
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+
+def export_report(alerts, filename, format='json'):
+    serializable = []
+    for alert in alerts:
+        if isinstance(alert, dict):
+            serializable.append(alert)
+        else:
+            # LogEntry -> dict of its attributes
+            serializable.append(vars(alert))
+
+    with open(filename, 'w') as f:
+        json.dump(serializable, f, indent=2)
+    return len(serializable)
 
 
 def correlate_events(entries):
@@ -291,6 +306,7 @@ def main():
                                      description='The program is good',
                                      epilog='End')
     parser.add_argument("file", help='Input file path')
+    parser.add_argument("--report", help='Export alerts to a JSON file')
     args = parser.parse_args()
 
     print("[*] LogHunter - Log Analysis Engine")
@@ -383,6 +399,25 @@ def main():
     for inc in incidents:
         stages = ' -> '.join(inc['stages'])
         print(f"    {inc['ip']}: {stages}")
+
+        print("--- Correlation ---")
+    incidents = list(correlate_events(entries))
+    print("[*] CRITICAL INCIDENTS:")
+    for inc in incidents:
+        stages = ' -> '.join(inc['stages'])
+        print(f"    {inc['ip']}: {stages}")
+
+    all_alerts = []
+    all_alerts.extend(sorted(alerts, key=lambda a: a['count'], reverse=True))
+    all_alerts.extend(bursts)
+    all_alerts.extend(incidents)
+
+    if args.report:
+        count = export_report(all_alerts, args.report, format='json')
+        print(f"\n[*] Report exported: {args.report} ({count} alerts)")
+    else:
+        print(f"\n[*] Total alerts: {len(all_alerts)}")
+        print("[*] Use --report <file> to export.")
 
 
 if __name__ == '__main__':
