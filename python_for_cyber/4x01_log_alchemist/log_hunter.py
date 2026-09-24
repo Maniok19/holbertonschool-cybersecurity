@@ -32,6 +32,12 @@ class LogEntry:
         self.raw_line = raw_line
 
 
+def filter_logs(stream, status_codes=[404, 500]):
+    for entry in stream:
+        status = getattr(entry, 'status', None)
+        if status in status_codes:
+            yield entry
+
 def normalize_entry(parsed_dict, log_type, raw_line='') -> LogEntry:
     if parsed_dict is None:
         return None
@@ -107,6 +113,7 @@ def main():
     apache_count = 0
     syslog_count = 0
 
+    entries = []
     print("--- Parsing ---")
     sample = None
     for line in read_stream(args.file):
@@ -121,6 +128,7 @@ def main():
                 entry = normalize_entry(parsed, 'syslog', line)
             else:
                 continue
+        entries.append(entry)
         if sample is None:
             sample = entry
 
@@ -134,6 +142,10 @@ def main():
         if sample.service == 'http':
             extra = f" | status={sample.status} | path={sample.path}"
         print(f"    ip={sample.ip} | service={sample.service}{extra}")
+
+    print("--- Filtering ---")
+    suspicious = sum(1 for _ in filter_logs(entries, [404, 500]))
+    print(f"[*] Suspicious (404, 500): {suspicious}")
 
 
 if __name__ == '__main__':
