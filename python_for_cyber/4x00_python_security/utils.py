@@ -43,8 +43,7 @@ def validate_line(line: str) -> bool:
     return bool(EMAIL_RE.match(email))
 
 
-def clean_data(lines: list) -> list:
-    cleaned = []
+def clean_data(lines) -> "generator":
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -58,7 +57,6 @@ def clean_data(lines: list) -> list:
         if status == "WEAK":
             logging.warning(f"Line {i}: weak password detected for {email}")
             hashed = hash_password(password, SALT)
-            cleaned.append(f"{email}:{hashed}")
+            yield f"{email}:{hashed}"
         else:
-            cleaned.append(f"{email}:{status}")
-    return cleaned
+            yield f"{email}:{status}"
