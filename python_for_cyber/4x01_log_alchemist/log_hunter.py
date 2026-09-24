@@ -29,7 +29,8 @@ BOT_SIGNATURES = ['sqlmap', 'nikto', 'curl', 'python']
 
 class LogEntry:
     def __init__(self, ip='', timestamp='', service='', message='',
-                 raw_line='', method='', path='', status=None, user_agent=''):
+                 raw_line='', method='', path='', status=None,
+                 user_agent='', size=None):
         self.ip = ip
         self.timestamp = timestamp
         self.service = service
@@ -39,6 +40,7 @@ class LogEntry:
         self.path = path
         self.status = status
         self.user_agent = user_agent
+        self.size = size
 
 
 def analyze_user_agent(log_entry):
@@ -85,6 +87,7 @@ def normalize_entry(parsed_dict, log_type, raw_line='') -> LogEntry:
         except (ValueError, TypeError):
             entry.status = 0
         entry.user_agent = parsed_dict.get('user_agent', '')
+        entry.size = parsed_dict.get('size', None)
         return entry
 
     if log_type == 'syslog':
