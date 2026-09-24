@@ -156,7 +156,7 @@ def main():
     print("--- Filtering ---")
     suspicious = sum(1 for _ in filter_logs(entries, [404, 500]))
     print(f"[*] Suspicious (404, 500): {suspicious}")
-    
+
     print("--- Enrichment ---")
     known = 0
     for entry in entries:
