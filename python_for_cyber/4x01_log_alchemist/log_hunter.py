@@ -30,7 +30,7 @@ BOT_SIGNATURES = ['sqlmap', 'nikto', 'curl', 'python']
 class LogEntry:
     def __init__(self, ip='', timestamp='', service='', message='',
                  raw_line='', method='', path='', status=None,
-                 user_agent='', size=None):
+                 user_agent='', size=None, source='', **kwargs):
         self.ip = ip
         self.timestamp = timestamp
         self.service = service
@@ -41,6 +41,9 @@ class LogEntry:
         self.status = status
         self.user_agent = user_agent
         self.size = size
+        self.source = source
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
 
 def analyze_user_agent(log_entry):
