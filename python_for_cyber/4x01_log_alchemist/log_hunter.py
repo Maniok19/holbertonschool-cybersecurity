@@ -344,7 +344,10 @@ def main():
     bursts = list(detect_burst(entries))
     print(f"[*] BURST alerts: {len(bursts)}")
     for alert in bursts:
-        print(f"    {alert['ip']}: {alert['count']} requests in {alert['window']}s window")
+        print(
+            f"    {alert['ip']}: {alert['count']} requests "
+            f"in {alert['window']}s window"
+        )
 
 
 if __name__ == '__main__':
