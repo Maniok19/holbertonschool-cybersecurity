@@ -2,7 +2,8 @@
 import sys
 import re
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
+from datetime import datetime
 
 
 APACHE_RE = re.compile(
@@ -63,6 +64,51 @@ class LogEntry:
         self.source = source
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+
+def parse_timestamp(ts: str):
+    if not ts:
+        return None
+    ts = ts.strip()
+    # Apache: 11/Feb/2026:14:01:24 +0000
+    for fmt in ("%d/%b/%Y:%H:%M:%S %z", "%d/%b/%Y:%H:%M:%S"):
+        try:
+            return datetime.strptime(ts, fmt)
+        except ValueError:
+            pass
+    # Syslog: Feb 11 14:31:24 (no year -> assume 2026)
+    try:
+        dt = datetime.strptime(ts, "%b %d %H:%M:%S")
+        return dt.replace(year=2026)
+    except ValueError:
+        return None
+
+
+def detect_burst(entries, window_seconds=60, threshold=10):
+    windows = defaultdict(list)
+    for entry in entries:
+        ip = getattr(entry, 'ip', None)
+        if not ip:
+            continue
+        ts = parse_timestamp(getattr(entry, 'timestamp', '') or '')
+        if ts is None:
+            continue
+
+        times = windows[ip]
+        times.append(ts)
+        # drop timestamps older than the window
+        cutoff = ts.timestamp() - window_seconds
+        while times and times[0].timestamp() < cutoff:
+            times.pop(0)
+
+        if len(times) >= threshold:
+            yield {
+                'ip': ip,
+                'count': len(times),
+                'window': window_seconds,
+                'alert_type': 'BURST',
+            }
+            times.clear()  # reset so we don't re-alert every subsequent entry
 
 
 def detect_bruteforce(entries):
@@ -293,6 +339,12 @@ def main():
     print(f"[*] BRUTE_FORCE alerts: {len(alerts)}")
     for alert in sorted(alerts, key=lambda a: a['count'], reverse=True):
         print(f"    {alert['ip']}: {alert['count']} failures")
+
+    print("--- Burst Detection ---")
+    bursts = list(detect_burst(entries))
+    print(f"[*] BURST alerts: {len(bursts)}")
+    for alert in bursts:
+        print(f"    {alert['ip']}: {alert['count']} requests in {alert['window']}s window")
 
 
 if __name__ == '__main__':
