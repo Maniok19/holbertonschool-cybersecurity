@@ -347,7 +347,7 @@ def main():
     parser.add_argument("file", help='Input file path')
     parser.add_argument("--report", help='Export alerts to a JSON file')
     parser.add_argument("--workers", type=int, default=0,
-                        help='Number of worker processes (0 = single-threaded)')
+                help='Number of worker processes (0 = single-threaded)')
     args = parser.parse_args()
 
     print("[*] LogHunter - Log Analysis Engine")
