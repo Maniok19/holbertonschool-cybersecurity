@@ -26,6 +26,8 @@ GEOIP_DB = {'1.2.3.4': 'US', '5.6.7.8': 'RU'}
 
 BOT_SIGNATURES = ['sqlmap', 'nikto', 'curl', 'python']
 
+BLACKLIST = {'10.0.0.1', '192.168.1.66'}
+
 
 class LogEntry:
     def __init__(self, ip='', timestamp='', service='', message='',
@@ -44,6 +46,15 @@ class LogEntry:
         self.source = source
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+
+def check_threat_intel(log_entry):
+    ip = getattr(log_entry, 'ip', None)
+    if ip in BLACKLIST:
+        log_entry.alert_level = 'HIGH'
+    else:
+        log_entry.alert_level = 'LOW'
+    return log_entry.alert_level
 
 
 def analyze_user_agent(log_entry):
@@ -191,6 +202,13 @@ def main():
             bots += 1
     print(f"[*] GeoIP: {len(entries)} entries enriched ({known} known IPs)")
     print(f"[*] Bots detected: {bots}")
+
+    print("--- Threat Intelligence ---")
+    high = 0
+    for entry in entries:
+        if check_threat_intel(entry) == 'HIGH':
+            high += 1
+    print(f"[*] HIGH alerts: {high} entries from blacklisted IPs")
 
 
 if __name__ == '__main__':
