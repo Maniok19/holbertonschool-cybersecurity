@@ -1,4 +1,5 @@
 #!/bin/bash
+# This script defines an rsyslog JSON template with the fields "time", "host", and "msg"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Error: This script must be run as root." >&2
