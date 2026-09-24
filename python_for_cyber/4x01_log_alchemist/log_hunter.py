@@ -36,6 +36,14 @@ SQLI_PATTERNS = [
     re.compile(r"'\s*or\s*1\s*=\s*1", re.IGNORECASE),
 ]
 
+XSS_PATTERNS = [
+    re.compile(r"<script", re.IGNORECASE),
+    re.compile(r"javascript:", re.IGNORECASE),
+    re.compile(r"onload\s*=", re.IGNORECASE),
+    re.compile(r"onerror\s*=", re.IGNORECASE),
+    re.compile(r"<img[^>]+src", re.IGNORECASE),
+]
+
 
 class LogEntry:
     def __init__(self, ip='', timestamp='', service='', message='',
@@ -54,6 +62,22 @@ class LogEntry:
         self.source = source
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+
+def detect_xss(log_entry):
+    if getattr(log_entry, 'attack_type', None) == 'SQLi':
+        return False
+    fields = (
+        getattr(log_entry, 'path', '') or '',
+        getattr(log_entry, 'message', '') or '',
+        getattr(log_entry, 'raw_line', '') or '',
+    )
+    haystack = ' '.join(fields)
+    for pattern in XSS_PATTERNS:
+        if pattern.search(haystack):
+            log_entry.attack_type = 'XSS'
+            return True
+    return False
 
 
 def detect_sqli(log_entry):
@@ -238,6 +262,8 @@ def main():
     for entry in entries:
         if detect_sqli(entry):
             sqli += 1
+        elif detect_xss(entry):
+            xss += 1
     print(f"[*] SQLi attempts: {sqli}")
     print(f"[*] XSS attempts:  {xss}")
 
