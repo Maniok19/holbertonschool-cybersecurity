@@ -25,7 +25,7 @@ IP_RE = re.compile(r'(\d+\.\d+\.\d+\.\d+)')
 
 class LogEntry:
     def __init__(self, ip, timestamp, service, message, raw_line):
-        self.ip = ip 
+        self.ip = ip
         self.timestamp = timestamp
         self.service = service
         self.message = message
