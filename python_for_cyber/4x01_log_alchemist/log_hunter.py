@@ -72,9 +72,17 @@ def correlate_events(entries):
         ip = getattr(entry, 'ip', None)
         if not ip:
             continue
-        if getattr(entry, 'status', None) == 404:
+
+        status = getattr(entry, 'status', None)
+        try:
+            status = int(status) if status is not None else None
+        except (ValueError, TypeError):
+            status = None
+        if status == 404:
             state[ip].add('scanner')
-        if getattr(entry, 'attack_type', None) == 'SQLi':
+
+        attack = getattr(entry, 'attack_type', None)
+        if attack == 'SQLi' or detect_sqli(entry):
             state[ip].add('sqli')
 
         if 'scanner' in state[ip] and 'sqli' in state[ip]:
