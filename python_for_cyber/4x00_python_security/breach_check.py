@@ -32,17 +32,17 @@ def setup_logging():
     logger.addHandler(file_handler)
 
 
-def read_file(filename: str) -> list:
+def read_file(filename: str):
     try:
         with open(filename, "r") as f:
-            return f.readlines()
+            for line in f:
+                yield line
     except FileNotFoundError:
         logging.error(f"File not found: {filename}")
         sys.exit(1)
     except PermissionError:
         logging.error(f"Permission denied: {filename}")
         sys.exit(1)
-
 
 def main():
     parser = argparse.ArgumentParser(prog='Main',
@@ -65,7 +65,7 @@ def main():
     logging.info("BreachCheck v1.0 startup...")
     data = read_file(args.file)
     data_clean = clean_data(data)
-    logging.info(f"Processing file... {len(data_clean)} valid entries")
+    logging.info(f"Processing file... {sum(1 for _ in data_clean)} valid entries")
 
 
 if __name__ == "__main__":
