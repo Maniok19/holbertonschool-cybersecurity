@@ -14,7 +14,7 @@ MIN_LENGTH = 8
 def load_config(path: str = "config.ini") -> configparser.ConfigParser:
     config = configparser.ConfigParser()
     if not config.read(path):
-        logging.error("Config file missing")
+        logging.error("config file missing")
         sys.exit(1)
     return config
 
