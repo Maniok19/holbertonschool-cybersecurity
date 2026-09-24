@@ -5,6 +5,7 @@ import argparse
 from collections import Counter, defaultdict
 from datetime import datetime
 import json
+import multiprocessing
 
 
 APACHE_RE = re.compile(
@@ -67,13 +68,54 @@ class LogEntry:
             setattr(self, key, value)
 
 
+def process_chunk(lines):
+    """Worker: parse -> normalize -> enrich -> detect for a batch of lines."""
+    results = []
+    for line in lines:
+        parsed = parse_apache_line(line)
+        if parsed:
+            entry = normalize_entry(parsed, 'apache', line)
+        else:
+            parsed = parse_syslog_line(line)
+            if parsed:
+                entry = normalize_entry(parsed, 'syslog', line)
+            else:
+                continue
+        enrich_ip(entry)
+        analyze_user_agent(entry)
+        check_threat_intel(entry)
+        detect_sqli(entry)
+        detect_xss(entry)
+        results.append(entry)
+    return results
+
+
+def parallel_analyze(file_path, num_workers, chunk_size=1000):
+    """Read file, split into chunks, process with a Pool, merge results."""
+    chunks = []
+    with open(file_path, 'r') as f:
+        chunk = []
+        for line in f:
+            chunk.append(line)
+            if len(chunk) >= chunk_size:
+                chunks.append(chunk)
+                chunk = []
+        if chunk:
+            chunks.append(chunk)
+
+    with multiprocessing.Pool(processes=num_workers) as pool:
+        results = pool.map(process_chunk, chunks)
+
+    entries = [entry for sublist in results for entry in sublist]
+    return entries
+
+
 def export_report(alerts, filename, format='json'):
     serializable = []
     for alert in alerts:
         if isinstance(alert, dict):
             serializable.append(alert)
         else:
-            # LogEntry -> dict of its attributes
             serializable.append(vars(alert))
 
     with open(filename, 'w') as f:
@@ -113,13 +155,11 @@ def parse_timestamp(ts: str):
     if not ts:
         return None
     ts = ts.strip()
-    # Apache: 11/Feb/2026:14:01:24 +0000
     for fmt in ("%d/%b/%Y:%H:%M:%S %z", "%d/%b/%Y:%H:%M:%S"):
         try:
             return datetime.strptime(ts, fmt)
         except ValueError:
             pass
-    # Syslog: Feb 11 14:31:24 (no year -> assume 2026)
     try:
         dt = datetime.strptime(ts, "%b %d %H:%M:%S")
         return dt.replace(year=2026)
@@ -139,7 +179,6 @@ def detect_burst(entries, window_seconds=60, threshold=10):
 
         times = windows[ip]
         times.append(ts)
-        # drop timestamps older than the window
         cutoff = ts.timestamp() - window_seconds
         while times and times[0].timestamp() < cutoff:
             times.pop(0)
@@ -151,7 +190,7 @@ def detect_burst(entries, window_seconds=60, threshold=10):
                 'window': window_seconds,
                 'alert_type': 'BURST',
             }
-            times.clear()  # reset so we don't re-alert every subsequent entry
+            times.clear()
 
 
 def detect_bruteforce(entries):
@@ -307,32 +346,39 @@ def main():
                                      epilog='End')
     parser.add_argument("file", help='Input file path')
     parser.add_argument("--report", help='Export alerts to a JSON file')
+    parser.add_argument("--workers", type=int, default=0,
+                        help='Number of worker processes (0 = single-threaded)')
     args = parser.parse_args()
 
     print("[*] LogHunter - Log Analysis Engine")
-    print(f"[*] Reading: {args.file}")
-
-    apache_count = 0
-    syslog_count = 0
-
-    entries = []
-    print("--- Parsing ---")
     sample = None
-    for line in read_stream(args.file):
-        parsed = parse_apache_line(line)
-        if parsed:
-            apache_count += 1
-            entry = normalize_entry(parsed, 'apache', line)
-        else:
-            parsed = parse_syslog_line(line)
+    if args.workers > 0:
+        print(f"[*] Reading: {args.file} (parallel: {args.workers} workers)")
+        entries = parallel_analyze(args.file, args.workers)
+        apache_count = sum(1 for e in entries if e.service == 'http')
+        syslog_count = sum(1 for e in entries if e.service == 'ssh')
+        if entries:
+            sample = entries[0]
+    else:
+        print(f"[*] Reading: {args.file}")
+        entries = []
+        apache_count = 0
+        syslog_count = 0
+        for line in read_stream(args.file):
+            parsed = parse_apache_line(line)
             if parsed:
-                syslog_count += 1
-                entry = normalize_entry(parsed, 'syslog', line)
+                apache_count += 1
+                entry = normalize_entry(parsed, 'apache', line)
             else:
-                continue
-        entries.append(entry)
-        if sample is None:
-            sample = entry
+                parsed = parse_syslog_line(line)
+                if parsed:
+                    syslog_count += 1
+                    entry = normalize_entry(parsed, 'syslog', line)
+                else:
+                    continue
+            entries.append(entry)
+            if sample is None:
+                sample = entry
 
     print(f"[*] Apache lines:  {apache_count}")
     print(f"[*] Syslog lines:  {syslog_count}")
@@ -394,13 +440,6 @@ def main():
         )
 
     print("--- Correlation ---")
-    incidents = list(correlate_events(entries))
-    print("[*] CRITICAL INCIDENTS:")
-    for inc in incidents:
-        stages = ' -> '.join(inc['stages'])
-        print(f"    {inc['ip']}: {stages}")
-
-        print("--- Correlation ---")
     incidents = list(correlate_events(entries))
     print("[*] CRITICAL INCIDENTS:")
     for inc in incidents:
