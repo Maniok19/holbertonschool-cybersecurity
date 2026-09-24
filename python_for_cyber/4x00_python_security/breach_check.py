@@ -32,17 +32,6 @@ def setup_logging():
     logger.addHandler(file_handler)
 
 
-def read_file(filename: str):
-    try:
-        with open(filename, "r") as f:
-            for line in f:
-                yield line
-    except FileNotFoundError:
-        logging.error(f"File not found: {filename}")
-        sys.exit(1)
-    except PermissionError:
-        logging.error(f"Permission denied: {filename}")
-        sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser(prog='Main',
