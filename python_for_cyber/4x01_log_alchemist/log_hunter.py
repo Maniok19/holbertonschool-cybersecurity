@@ -28,12 +28,17 @@ BOT_SIGNATURES = ['sqlmap', 'nikto', 'curl', 'python']
 
 
 class LogEntry:
-    def __init__(self, ip, timestamp, service, message, raw_line):
+    def __init__(self, ip='', timestamp='', service='', message='',
+                 raw_line='', method='', path='', status=None, user_agent=''):
         self.ip = ip
         self.timestamp = timestamp
         self.service = service
         self.message = message
         self.raw_line = raw_line
+        self.method = method
+        self.path = path
+        self.status = status
+        self.user_agent = user_agent
 
 
 def analyze_user_agent(log_entry):
