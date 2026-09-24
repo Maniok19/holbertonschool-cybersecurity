@@ -22,6 +22,8 @@ SYSLOG_RE = re.compile(
 
 IP_RE = re.compile(r'(\d+\.\d+\.\d+\.\d+)')
 
+GEOIP_DB = {'1.2.3.4': 'US', '5.6.7.8': 'RU'}
+
 
 class LogEntry:
     def __init__(self, ip, timestamp, service, message, raw_line):
@@ -30,6 +32,13 @@ class LogEntry:
         self.service = service
         self.message = message
         self.raw_line = raw_line
+
+
+def enrich_ip(log_entry):
+    ip = getattr(log_entry, "ip", None)
+    country = GEOIP_DB.get(ip, "UNKNOWN")
+    setattr(log_entry, "country", country)
+    return country != "UNKNOWN"
 
 
 def filter_logs(stream, status_codes=[404, 500]):
@@ -147,6 +156,13 @@ def main():
     print("--- Filtering ---")
     suspicious = sum(1 for _ in filter_logs(entries, [404, 500]))
     print(f"[*] Suspicious (404, 500): {suspicious}")
+    
+    print("--- Enrichment ---")
+    known = 0
+    for entry in entries:
+        if enrich_ip(entry):
+            known += 1
+    print(f"[*] GeoIP: {len(entries)} entries enriched ({known} known IPs)")
 
 
 if __name__ == '__main__':
