@@ -5,18 +5,25 @@ import os
 import re
 import logging
 import hashlib
+import configparser
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 LINE_RE = re.compile(r"^([^:]+):(.+)$")
-COMMON_LIST = {"password", "123456", "12345678", "qwerty", "abc123", "letmein", "admin"}
-SALT = os.environ.get("BREACH_SALT", "default-salt")
+MIN_LENGTH = 8
+
+def load_config(path: str = "config.ini") -> configparser.ConfigParser:
+    config = configparser.ConfigParser()
+    if not config.read(path):
+        logging.error("Config file missing")
+        sys.exit(1)
+    return config
 
 def hash_password(password: str, salt: str) -> str:
     data = (password + salt).encode("utf-8")
     return hashlib.sha256(data).hexdigest()
 
 def check_policy(password: str) -> str:
-    if len(password) < 8:
+    if len(password) < MIN_LENGTH:
         return "WEAK"
     if not any(c.isdigit() for c in password):
         return "WEAK"
@@ -51,6 +58,13 @@ def main():
     args = parser.parse_args()
 
     setup_logging()
+    config = load_config()
+
+    global SALT, MIN_LENGTH, COMMON_LIST
+    SALT = config["SECURITY"]["Salt"]
+    MIN_LENGTH = config.getint("SECURITY", "MinLength")
+    COMMON_LIST = {p.strip().lower()
+                   for p in config["SECURITY"]["CommonList"].split(",")}
 
     logging.info("BreachCheck v1.0 startup...")
     data = read_file(args.file)
