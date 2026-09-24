@@ -8,13 +8,11 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-touch "$CONFIG_FILE"
-
 sed -i '/Forward all logs to remote server/d' "$CONFIG_FILE"
 sed -i '/@127.0.0.1/d' "$CONFIG_FILE"
 
-echo "# Forward all logs to remote server" >> "$CONFIG_FILE"
-echo '*.* @'"${SERVER_IP}"':514' >> "$CONFIG_FILE"
+echo "# Forward all logs to remote server" | tee -a /etc/rsyslog.d/50-default.conf
+echo '*.* @'"${SERVER_IP}"':514' >> /etc/rsyslog.d/50-default.conf
 
 echo "Added forwarding rule to $CONFIG_FILE:"
 grep -A1 "Forward all logs" "$CONFIG_FILE"
