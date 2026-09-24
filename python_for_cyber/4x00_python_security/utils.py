@@ -2,6 +2,7 @@
 import re
 import logging
 import hashlib
+import sys
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 LINE_RE = re.compile(r"^([^:]+):(.+)$")
@@ -10,6 +11,19 @@ LINE_RE = re.compile(r"^([^:]+):(.+)$")
 SALT = ""
 MIN_LENGTH = 0
 COMMON_LIST = set()
+
+
+def read_file(filename: str):
+    try:
+        with open(filename, "r") as f:
+            for line in f:
+                yield line
+    except FileNotFoundError:
+        logging.error(f"File not found: {filename}")
+        sys.exit(1)
+    except PermissionError:
+        logging.error(f"Permission denied: {filename}")
+        sys.exit(1)
 
 
 def configure(salt: str, min_length: int, common_list: set) -> None:
