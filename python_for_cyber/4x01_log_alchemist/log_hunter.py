@@ -28,6 +28,14 @@ BOT_SIGNATURES = ['sqlmap', 'nikto', 'curl', 'python']
 
 BLACKLIST = {'10.0.0.1', '192.168.1.66'}
 
+SQLI_PATTERNS = [
+    re.compile(r"union\s+select", re.IGNORECASE),
+    re.compile(r"'\s*or\s*'?\d+'?\s*=\s*'?\d+", re.IGNORECASE),
+    re.compile(r"--"),
+    re.compile(r";\s*drop\s+table", re.IGNORECASE),
+    re.compile(r"'\s*or\s*1\s*=\s*1", re.IGNORECASE),
+]
+
 
 class LogEntry:
     def __init__(self, ip='', timestamp='', service='', message='',
@@ -46,6 +54,20 @@ class LogEntry:
         self.source = source
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+
+def detect_sqli(log_entry):
+    fields = (
+        getattr(log_entry, 'path', '') or '',
+        getattr(log_entry, 'message', '') or '',
+        getattr(log_entry, 'raw_line', '') or '',
+    )
+    haystack = ' '.join(fields)
+    for pattern in SQLI_PATTERNS:
+        if pattern.search(haystack):
+            log_entry.attack_type = 'SQLi'
+            return True
+    return False
 
 
 def check_threat_intel(log_entry):
@@ -209,6 +231,15 @@ def main():
         if check_threat_intel(entry) == 'HIGH':
             high += 1
     print(f"[*] HIGH alerts: {high} entries from blacklisted IPs")
+
+    print("--- Attack Detection ---")
+    sqli = 0
+    xss = 0
+    for entry in entries:
+        if detect_sqli(entry):
+            sqli += 1
+    print(f"[*] SQLi attempts: {sqli}")
+    print(f"[*] XSS attempts:  {xss}")
 
 
 if __name__ == '__main__':
