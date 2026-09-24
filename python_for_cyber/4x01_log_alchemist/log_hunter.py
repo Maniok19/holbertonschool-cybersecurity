@@ -11,7 +11,7 @@ def read_stream(file_path: str):
     except FileNotFoundError:
         print(f"[ERROR] File not found: {file_path}")
         print("[!] No data to process. Exiting.")
-        sys.exit(1)
+        return
 
 
 def main():
