@@ -2,6 +2,7 @@
 import sys
 import re
 import argparse
+from collections import Counter
 
 
 APACHE_RE = re.compile(
@@ -62,6 +63,22 @@ class LogEntry:
         self.source = source
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+
+def detect_bruteforce(entries):
+    failures = Counter()
+    for entry in entries:
+        ip = getattr(entry, 'ip', None)
+        if not ip:
+            continue
+        status = getattr(entry, 'status', None)
+        message = getattr(entry, 'message', '') or ''
+        if status == 401 or 'Failed password' in message:
+            failures[ip] += 1
+
+    for ip, count in failures.items():
+        if count > 5:
+            yield {'ip': ip, 'count': count, 'alert_type': 'BRUTE_FORCE'}
 
 
 def detect_xss(log_entry):
@@ -266,6 +283,12 @@ def main():
             xss += 1
     print(f"[*] SQLi attempts: {sqli}")
     print(f"[*] XSS attempts:  {xss}")
+
+    print("--- Brute Force ---")
+    alerts = list(detect_bruteforce(entries))
+    print(f"[*] BRUTE_FORCE alerts: {len(alerts)}")
+    for alert in sorted(alerts, key=lambda a: a['count'], reverse=True):
+        print(f"    {alert['ip']}: {alert['count']} failures")
 
 
 if __name__ == '__main__':
