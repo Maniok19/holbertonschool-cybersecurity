@@ -13,7 +13,9 @@ def main():
 
 
     print("BreachCheck v1.0 startup...")
-    read_file(args.file)
+    data = read_file(args.file)
+    data_clean = clean_data(data)
+    print(data_clean)
 
 def read_file(filename: str) -> list:
     try:
@@ -25,6 +27,17 @@ def read_file(filename: str) -> list:
     except PermissionError:
         print(f"[ERROR] Permission denied: {filename}", file=sys.stderr)
         sys.exit(1)
+
+def clean_data(lines: list) -> list:
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            continue
+        cleaned.append(stripped)
+    return cleaned
 
 if __name__ == "__main__":
     main()
