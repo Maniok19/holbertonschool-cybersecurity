@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 import argparse
 import sys
+import os
 import re
 import logging
+import hashlib
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 LINE_RE = re.compile(r"^([^:]+):(.+)$")
 COMMON_LIST = {"password", "123456", "12345678", "qwerty", "abc123", "letmein", "admin"}
+SALT = os.environ.get("BREACH_SALT", "default-salt")
+
+def hash_password(password: str, salt: str) -> str:
+    data = (password + salt).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
 
 def check_policy(password: str) -> str:
     if len(password) < 8:
@@ -77,7 +84,10 @@ def clean_data(lines: list) -> list:
         logging.debug(f"Line {i}: policy check -> {status}")
         if status == "WEAK":
             logging.warning(f"Line {i}: weak password detected for {email}")
-        cleaned.append(stripped)
+            hashed = hash_password(password, SALT)
+            cleaned.append(f"{email}:{hashed}")
+        else:
+            cleaned.append(f"{email}:{status}")
     return cleaned
 
 
