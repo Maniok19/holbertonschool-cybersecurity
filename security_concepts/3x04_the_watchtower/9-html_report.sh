@@ -29,7 +29,7 @@ END {
 }
 ' "$LOG_FILE" | sort -rn | head -n 5)
 
-cat > "$OUTPUT_FILE" <<'EOF'
+cat > $2 <<'EOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -52,11 +52,11 @@ EOF
 RANK=1
 while read -r COUNT IP; do
     [ -z "$IP" ] && continue
-    echo "            <tr><td>${RANK}</td><td>${IP}</td><td>${COUNT}</td></tr>" >> "$OUTPUT_FILE"
+    echo "            <tr><td>${RANK}</td><td>${IP}</td><td>${COUNT}</td></tr>" >> $2
     RANK=$((RANK + 1))
 done <<< "$TOP_ATTACKERS"
 
-cat >> "$OUTPUT_FILE" <<'EOF'
+cat >> $2 <<'EOF'
         </tbody>
     </table>
 </body>
