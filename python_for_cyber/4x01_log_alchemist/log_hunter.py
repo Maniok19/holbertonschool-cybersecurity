@@ -6,9 +6,9 @@ import argparse
 
 APACHE_RE = re.compile(
     r'(?P<ip>\d+\.\d+\.\d+\.\d+)'
-    r' - - '
+    r' \S+ \S+ '
     r'\[(?P<date>[^\]]+)\]'
-    r' "(?P<method>[A-Z]+) (?P<path>\S+) [^"]*"'
+    r' "(?P<method>\S+) (?P<path>\S+)(?: [^"]*)?"'
     r' (?P<status>\d{3})'
     r' (?P<size>\d+|-)'
 )
