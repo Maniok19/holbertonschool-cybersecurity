@@ -38,6 +38,7 @@ def filter_logs(stream, status_codes=[404, 500]):
         if status in status_codes:
             yield entry
 
+
 def normalize_entry(parsed_dict, log_type, raw_line='') -> LogEntry:
     if parsed_dict is None:
         return None
