@@ -4,7 +4,7 @@ import sys
 import logging
 import configparser
 
-from utils import hash_password, clean_data, validate_line, configure
+from utils import hash_password, clean_data, validate_line, configure, read_file
 
 
 def load_config(path: str = "config.ini") -> configparser.ConfigParser:
