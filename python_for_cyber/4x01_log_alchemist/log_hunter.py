@@ -24,6 +24,8 @@ IP_RE = re.compile(r'(\d+\.\d+\.\d+\.\d+)')
 
 GEOIP_DB = {'1.2.3.4': 'US', '5.6.7.8': 'RU'}
 
+BOT_SIGNATURES = ['sqlmap', 'nikto', 'curl', 'python']
+
 
 class LogEntry:
     def __init__(self, ip, timestamp, service, message, raw_line):
@@ -32,6 +34,17 @@ class LogEntry:
         self.service = service
         self.message = message
         self.raw_line = raw_line
+
+
+def analyze_user_agent(log_entry):
+    fields = (
+        getattr(log_entry, 'user_agent', '') or '',
+        getattr(log_entry, 'message', '') or '',
+        getattr(log_entry, 'raw_line', '') or '',
+    )
+    haystack = ' '.join(fields).lower()
+    log_entry.is_bot = any(sig in haystack for sig in BOT_SIGNATURES)
+    return log_entry.is_bot
 
 
 def enrich_ip(log_entry):
@@ -159,10 +172,14 @@ def main():
 
     print("--- Enrichment ---")
     known = 0
+    bots = 0
     for entry in entries:
         if enrich_ip(entry):
             known += 1
+        if analyze_user_agent(entry):
+            bots += 1
     print(f"[*] GeoIP: {len(entries)} entries enriched ({known} known IPs)")
+    print(f"[*] Bots detected: {bots}")
 
 
 if __name__ == '__main__':
