@@ -66,6 +66,26 @@ class LogEntry:
             setattr(self, key, value)
 
 
+def correlate_events(entries):
+    state = defaultdict(set)
+    for entry in entries:
+        ip = getattr(entry, 'ip', None)
+        if not ip:
+            continue
+        if getattr(entry, 'status', None) == 404:
+            state[ip].add('scanner')
+        if getattr(entry, 'attack_type', None) == 'SQLi':
+            state[ip].add('sqli')
+
+        if 'scanner' in state[ip] and 'sqli' in state[ip]:
+            yield {
+                'ip': ip,
+                'stages': ['scanner', 'sqli'],
+                'alert_type': 'CRITICAL INCIDENT',
+            }
+            state[ip].clear()
+
+
 def parse_timestamp(ts: str):
     if not ts:
         return None
@@ -348,6 +368,13 @@ def main():
             f"    {alert['ip']}: {alert['count']} requests "
             f"in {alert['window']}s window"
         )
+
+    print("--- Correlation ---")
+    incidents = list(correlate_events(entries))
+    print("[*] CRITICAL INCIDENTS:")
+    for inc in incidents:
+        stages = ' -> '.join(inc['stages'])
+        print(f"    {inc['ip']}: {stages}")
 
 
 if __name__ == '__main__':
