@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import sys
+import re
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+LINE_RE = re.compile(r"^([^:]+):(.+)$")
 
 def main():
     parser = argparse.ArgumentParser(prog='Main',
@@ -36,8 +40,17 @@ def clean_data(lines: list) -> list:
             continue
         if stripped.startswith("#"):
             continue
+        if not validate_line(stripped):
+            continue
         cleaned.append(stripped)
     return cleaned
+
+def validate_line(line: str) -> bool:
+    match = LINE_RE.match(line)
+    if not match:
+        return False
+    email = match.group(1)
+    return bool(EMAIL_RE.match(email))
 
 if __name__ == "__main__":
     main()
