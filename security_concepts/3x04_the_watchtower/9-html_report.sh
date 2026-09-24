@@ -14,7 +14,7 @@ if [ ! -f "$LOG_FILE" ]; then
 fi
 
 TOP_ATTACKERS=$(awk '
-{
+/Failed password/ {
     for (i = 1; i <= NF; i++) {
         if ($i ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}$/) {
             count[$i]++
