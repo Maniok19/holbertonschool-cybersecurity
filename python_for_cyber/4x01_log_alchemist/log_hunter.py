@@ -13,6 +13,13 @@ APACHE_RE = re.compile(
     r' (?P<size>\d+|-)'
 )
 
+SYSLOG_RE = re.compile(
+    r'(?P<date>[A-Z][a-z]{2}\s+\d{1,2} \d{2}:\d{2}:\d{2})'
+    r' (?P<host>\S+)'
+    r' (?P<process>\w+\[\d+\])'
+    r': (?P<message>.*)'
+)
+
 
 def read_stream(file_path: str):
     try:
@@ -27,6 +34,13 @@ def read_stream(file_path: str):
 
 def parse_apache_line(line: str):
     m = APACHE_RE.search(line)
+    if not m:
+        return None
+    return m.groupdict()
+
+
+def parse_syslog_line(line: str):
+    m = SYSLOG_RE.search(line)
     if not m:
         return None
     return m.groupdict()
@@ -49,7 +63,7 @@ def main():
     for line in read_stream(args.file):
         if parse_apache_line(line):
             apache_count += 1
-        else:
+        elif parse_syslog_line(line):
             syslog_count += 1
 
     print(f"[*] Apache lines:  {apache_count}")
