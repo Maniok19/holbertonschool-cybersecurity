@@ -45,6 +45,10 @@ def main(argv=None):
     start_port, end_port = parse_port_range(args.ports)
 
     print("NetProbe v1.0 initialized...")
+
+    hostname = resolve_hostname(args.target)
+    print(f"Target: {args.target} ({hostname})")
+
     results = scan_ports(
         args.target,
         start_port,
@@ -120,6 +124,18 @@ def parse_port_range(spec: str):
     if start > end:
         sys.exit(f"error: port range {spec!r} is reversed (start > end)")
     return start, end
+
+
+def resolve_hostname(ip: str) -> str:
+    """Resolve an IP to its PTR hostname via reverse DNS.
+
+    Returns the hostname on success, or 'unknown' on failure.
+    """
+    try:
+        hostname, _, _ = socket.gethostbyaddr(ip)
+        return hostname
+    except (socket.herror, socket.gaierror, OSError):
+        return "unknown"
 
 
 def check_port(ip: str, port: int) -> bool:
@@ -293,6 +309,7 @@ def scan_ports(ip: str,
 
 
 def scan_udp(ip: str, port: int) -> bool:
+    """Scan a single UDP port (no handshake; open|filtered on timeout)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(2.0)
     try:
@@ -305,7 +322,6 @@ def scan_udp(ip: str, port: int) -> bool:
             return False
         except OSError:
             return False
-        # Guard against a non-tuple being returned.
         if isinstance(result, tuple) and len(result) == 2:
             return True
         return True
