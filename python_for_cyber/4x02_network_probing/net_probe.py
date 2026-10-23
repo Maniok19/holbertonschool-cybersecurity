@@ -69,7 +69,7 @@ def parse_args(argv=None):
     """Build and parse the CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="net_probe",
-        description="Scan a TCP port range on a target host and emit a JSON report.",
+        description="Scan a TCP port range on a target host and report.",
     )
     parser.add_argument(
         "-t", "--target",
@@ -200,7 +200,8 @@ def _probe_port(ip: str, port: int):
         guess = guess_service(port)
         service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
 
-    vulnerable = bool(check_vulnerability(banner if banner != "Unknown" else ""))
+    vulnerable = bool(check_vulnerability
+                      (banner if banner != "Unknown" else ""))
 
     return {
         "port": port,
@@ -233,7 +234,8 @@ def scan_ports(ip: str,
                 continue
             if result is not None:
                 tag = " [VULNERABLE]" if result["vulnerable"] else ""
-                print(f"[+] Port {result['port']} Open: {result['service']}{tag}")
+                print
+                (f"[+] Port {result['port']} Open: {result['service']}{tag}")
                 results.append(result)
 
     results.sort(key=lambda r: r["port"])
