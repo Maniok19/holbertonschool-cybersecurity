@@ -1,4 +1,8 @@
+#!/usr/bin/env python3
+import argparse
+import json
 import socket
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -34,7 +38,73 @@ VULNERABLE_SIGNATURES = [
 
 
 def main():
-    print("NetProbe v1.0 initialized...")
+    args = parse_args()
+
+    # Parse the port range "start-end" into two ints.
+    start_port, end_port = parse_port_range(args.ports)
+
+    print(f"NetProbe v1.0 initialized...")
+    results = scan_ports(args.target, start_port, end_port)
+
+    # Machine-readable payload for the CISO's dashboard.
+    report = [
+        {
+            "port": r["port"],
+            "state": "open",
+            "service": r["service"],
+            "vulnerability": "YES" if r["vulnerable"] else "NO",
+        }
+        for r in results
+    ]
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            json.dump(report, fh, indent=2)
+        print(f"[*] Report written to {args.output}")
+
+    return report
+
+
+def parse_args(argv=None):
+    """Build and parse the CLI argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="net_probe",
+        description="Scan a TCP port range on a target host and emit a JSON report.",
+    )
+    parser.add_argument(
+        "-t", "--target",
+        required=True,
+        help="Target IPv4 address (e.g. 192.168.1.1)",
+    )
+    parser.add_argument(
+        "-p", "--ports",
+        default="1-1024",
+        help='Port range as "start-end" (default: "1-1024")',
+    )
+    parser.add_argument(
+        "-o", "--output",
+        help="Write results to this JSON file (optional)",
+    )
+    return parser.parse_args(argv)
+
+
+def parse_port_range(spec: str):
+    """Parse a "start-end" string into a (start, end) tuple of ints.
+
+    Raises:
+        SystemExit: if the spec is malformed or out of range.
+    """
+    try:
+        start_s, end_s = spec.split("-", 1)
+        start, end = int(start_s), int(end_s)
+    except (ValueError, AttributeError):
+        sys.exit(f"error: invalid port range {spec!r}; expected START-END")
+
+    if not (0 <= start <= 65535 and 0 <= end <= 65535):
+        sys.exit(f"error: port range {spec!r} out of bounds (0-65535)")
+    if start > end:
+        sys.exit(f"error: port range {spec!r} is reversed (start > end)")
+    return start, end
 
 
 def check_port(ip: str, port: int) -> bool:
@@ -90,15 +160,7 @@ def guess_service(port: int) -> str:
 
 
 def check_vulnerability(banner: str) -> str:
-    """Flag a banner that matches a known-vulnerable signature.
-
-    Args:
-        banner: The service banner string (e.g. "vsftpd 2.3.4").
-
-    Returns:
-        "[VULNERABLE]" if the banner contains any known-bad signature,
-        otherwise an empty string.
-    """
+    """Flag a banner that matches a known-vulnerable signature."""
     if not banner:
         return ""
 
@@ -110,12 +172,7 @@ def check_vulnerability(banner: str) -> str:
 
 
 def get_service_info(ip: str, port: int) -> str:
-    """Return a best-effort service name for an open port.
-
-    Tries the real banner first; if the service is silent, falls back
-    to guessing from the port number. Appends "[VULNERABLE]" when the
-    banner matches a known-bad signature.
-    """
+    """Return a best-effort service name for an open port."""
     banner = get_banner(ip, port)
 
     if banner and banner != "Unknown":
@@ -131,12 +188,25 @@ def get_service_info(ip: str, port: int) -> str:
 
 
 def _probe_port(ip: str, port: int):
-    """Worker: check a single port and return its result dict, or None."""
+    """Worker: check a single port and return a result dict, or None."""
     if not check_port(ip, port):
         return None
 
-    service = get_service_info(ip, port)
-    return {"port": port, "service": service}
+    banner = get_banner(ip, port)
+
+    if banner and banner != "Unknown":
+        service = banner.splitlines()[0]
+    else:
+        guess = guess_service(port)
+        service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
+
+    vulnerable = bool(check_vulnerability(banner if banner != "Unknown" else ""))
+
+    return {
+        "port": port,
+        "service": service,
+        "vulnerable": vulnerable,
+    }
 
 
 def scan_ports(ip: str,
@@ -162,7 +232,8 @@ def scan_ports(ip: str,
                 print(f"[!] Port {port} probe failed: {exc}")
                 continue
             if result is not None:
-                print(f"[+] Port {result['port']} Open: {result['service']}")
+                tag = " [VULNERABLE]" if result["vulnerable"] else ""
+                print(f"[+] Port {result['port']} Open: {result['service']}{tag}")
                 results.append(result)
 
     results.sort(key=lambda r: r["port"])
