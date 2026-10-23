@@ -61,7 +61,10 @@ def get_banner(ip: str, port: int) -> str:
         sock.close()
 
 
-def scan_ports(ip: str, start_port: int, end_port: int, max_workers: int = 50) -> list:
+def scan_ports(ip: str,
+               start_port: int,
+               end_port: int,
+               max_workers: int = 50) -> list:
     """Scan a range of TCP ports on a single host, concurrently."""
     print(f"Scanning {ip} from {start_port} to {end_port}...")
 
