@@ -61,19 +61,30 @@ def get_banner(ip: str, port: int) -> str:
         sock.close()
 
 
-def scan_ports(ip: str, start_port: int, end_port: int) -> list:
-    """Scan a range of TCP ports on a single host."""
+def scan_ports(ip: str, start_port: int, end_port: int, max_workers: int = 50) -> list:
+    """Scan a range of TCP ports on a single host, concurrently."""
     print(f"Scanning {ip} from {start_port} to {end_port}...")
 
     results = []
-    for port in range(start_port, end_port + 1):
-        if check_port(ip, port):
-            banner = get_banner(ip, port)
-            # Banners can contain newlines (HTTP headers); keep the first line.
-            service = banner.splitlines()[0] if banner else "Unknown"
-            print(f"[+] Port {port} Open: {service}")
-            results.append({"port": port, "service": service})
+    ports = range(start_port, end_port + 1)
 
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_port = {
+            executor.submit(_probe_port, ip, port): port for port in ports
+        }
+
+        for future in as_completed(future_to_port):
+            port = future_to_port[future]
+            try:
+                result = future.result()
+            except Exception as exc:  # defensive: worker should not raise
+                print(f"[!] Port {port} probe failed: {exc}")
+                continue
+            if result is not None:
+                print(f"[+] Port {result['port']} Open: {result['service']}")
+                results.append(result)
+
+    results.sort(key=lambda r: r["port"])
     return results
 
 
