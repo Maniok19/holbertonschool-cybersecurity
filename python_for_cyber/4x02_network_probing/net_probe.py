@@ -292,19 +292,23 @@ def scan_ports(ip: str,
     return results
 
 
-def scan_udp(ip: str, port: int):
-    """ergjsdfgvljgv"""
+def scan_udp(ip: str, port: int) -> bool:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(2.0)
     try:
         sock.sendto(b"", (ip, port))
         try:
-            data, _ = sock.recvfrom
-            return True
+            result = sock.recvfrom(1024)
         except socket.timeout:
             return True
         except ConnectionRefusedError:
             return False
+        except OSError:
+            return False
+        # Guard against a non-tuple being returned.
+        if isinstance(result, tuple) and len(result) == 2:
+            return True
+        return True
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
     finally:
