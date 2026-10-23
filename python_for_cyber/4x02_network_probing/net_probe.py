@@ -26,3 +26,19 @@ def check_port(ip: str, port: int) -> bool:
         return False
     finally:
         sock.close()
+
+
+def ping_sweep(subnet: str) -> list:
+    """Check if a TCP port on the given IP is open."""
+    base = subnet.split("/")[0]
+    prefix = ".".join(base.split(".")[:3])
+
+    live = []
+    for host in range(1, 255):  # .1 through .254 inclusive
+        ip = f"{prefix}.{host}"
+        if check_port(ip, 80):
+            live.append(ip)
+    return live
+
+if (__name__ == "__main__"):
+    main()
