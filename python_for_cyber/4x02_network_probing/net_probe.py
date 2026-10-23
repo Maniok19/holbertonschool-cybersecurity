@@ -25,4 +25,4 @@ def check_port(ip: str, port: int) -> bool:
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
     finally:
-        sock.close
+        sock.close()
