@@ -40,5 +40,6 @@ def ping_sweep(subnet: str) -> list:
             live.append(ip)
     return live
 
+
 if (__name__ == "__main__"):
     main()
