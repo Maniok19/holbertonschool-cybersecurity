@@ -292,5 +292,24 @@ def scan_ports(ip: str,
     return results
 
 
+def scan_udp(ip: str, port: int):
+    """ergjsdfgvljgv"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2.0)
+    try:
+        sock.sendto(b"", (ip, port))
+        try:
+            data, _ = sock.recvfrom
+            return True
+        except socket.timeout:
+            return True
+        except ConnectionRefusedError:
+            return False
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False
+    finally:
+        sock.close()
+
+
 if __name__ == "__main__":
     main()
