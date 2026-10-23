@@ -21,6 +21,17 @@ COMMON_PORTS = {
     8080: "HTTP-Alt",
 }
 
+# Known-vulnerable signatures. Matching is case-insensitive substring.
+VULNERABLE_SIGNATURES = [
+    "vsftpd 2.3.4",        # CVE-2011-2523 (backdoor)
+    "apache 2.2.8",        # Old Apache, multiple CVEs
+    "proftpd 1.3.3",       # CVE-2010-4221
+    "openssh 7.4",         # Informational — flag old SSH builds
+    "microsoft ftpd",      # Anonymous access / weak auth
+    "pure-ftpd 1.0.2",     # CVE-2011-0411
+    "nginx/1.4",           # Old nginx, multiple CVEs
+]
+
 
 def main():
     print("NetProbe v1.0 initialized...")
@@ -74,44 +85,49 @@ def get_banner(ip: str, port: int) -> str:
 
 
 def guess_service(port: int) -> str:
-    """Guess a service name from a well-known port number.
+    """Guess a service name from a well-known port number."""
+    return COMMON_PORTS.get(port, "Unknown")
+
+
+def check_vulnerability(banner: str) -> str:
+    """Flag a banner that matches a known-vulnerable signature.
 
     Args:
-        port: TCP port number.
+        banner: The service banner string (e.g. "vsftpd 2.3.4").
 
     Returns:
-        A human-readable service name for the port, or "Unknown" if the
-        port isn't in our table. When used as a fallback for a silent
-        service, the caller appends " (Guessed)".
+        "[VULNERABLE]" if the banner contains any known-bad signature,
+        otherwise an empty string.
     """
-    return COMMON_PORTS.get(port, "Unknown")
+    if not banner:
+        return ""
+
+    lowered = banner.lower()
+    for sig in VULNERABLE_SIGNATURES:
+        if sig in lowered:
+            return "[VULNERABLE]"
+    return ""
 
 
 def get_service_info(ip: str, port: int) -> str:
     """Return a best-effort service name for an open port.
 
-    Tries the real banner first; if the service is silent (empty/unknown
-    banner), falls back to guessing from the port number.
-
-    Args:
-        ip: Target IPv4 address.
-        port: Target TCP port number.
-
-    Returns:
-        The banner's first line if available, otherwise
-        "<Service> (Guessed)", or "Unknown" if nothing can be determined.
+    Tries the real banner first; if the service is silent, falls back
+    to guessing from the port number. Appends "[VULNERABLE]" when the
+    banner matches a known-bad signature.
     """
     banner = get_banner(ip, port)
 
-    # get_banner returns "Unknown" when the socket fails, and "" after
-    # .strip() when the server sent only whitespace/newlines.
     if banner and banner != "Unknown":
-        return banner.splitlines()[0]
+        service = banner.splitlines()[0]
+    else:
+        guess = guess_service(port)
+        service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
 
-    guess = guess_service(port)
-    if guess != "Unknown":
-        return f"{guess} (Guessed)"
-    return "Unknown"
+    status = check_vulnerability(banner if banner != "Unknown" else "")
+    if status:
+        return f"{service} {status}"
+    return service
 
 
 def _probe_port(ip: str, port: int):
