@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import random
 import socket
 import sys
 import time
@@ -49,6 +50,7 @@ def main(argv=None):
         start_port,
         end_port,
         delay=args.delay,
+        randomize=args.random,
     )
 
     report = [
@@ -96,6 +98,11 @@ def parse_args(argv=None):
         type=float,
         default=0.0,
         help="Seconds to sleep between scan attempts (evade IDS; default 0)",
+    )
+    parser.add_argument(
+        "-r", "--random",
+        action="store_true",
+        help="Shuffle the port order before scanning (evade firewalls)",
     )
     return parser.parse_args(argv)
 
@@ -203,11 +210,7 @@ def get_service_info(ip: str, port: int) -> str:
 
 
 def _probe_port(ip: str, port: int, delay: float = 0.0):
-    """Worker: check a single port and return a result dict, or None.
-
-    If ``delay`` is positive, sleeps before this probe's connect attempt
-    to space out packets and avoid tripping IDS rate thresholds.
-    """
+    """Worker: check a single port and return a result dict, or None."""
     if delay > 0:
         print(f"[DEBUG] Sleeping {delay}s before next packet...")
         time.sleep(delay)
@@ -237,12 +240,18 @@ def scan_ports(ip: str,
                start_port: int,
                end_port: int,
                max_workers: int = 50,
-               delay: float = 0.0) -> list:
+               delay: float = 0.0,
+               randomize: bool = False) -> list:
     """Scan a range of TCP ports on a single host, concurrently."""
-    print(f"Scanning {ip} from {start_port} to {end_port}...")
+    ports = list(range(start_port, end_port + 1))
+
+    if randomize:
+        random.shuffle(ports)
+        print("Scanning ports randomly...")
+    else:
+        print(f"Scanning {ip} from {start_port} to {end_port}...")
 
     results = []
-    ports = range(start_port, end_port + 1)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_port = {
