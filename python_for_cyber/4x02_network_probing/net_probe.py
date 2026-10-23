@@ -61,5 +61,21 @@ def get_banner(ip: str, port: int) -> str:
         sock.close()
 
 
+def scan_ports(ip: str, start_port: int, end_port: int) -> list:
+    """Scan a range of TCP ports on a single host."""
+    print(f"Scanning {ip} from {start_port} to {end_port}...")
+
+    results = []
+    for port in range(start_port, end_port + 1):
+        if check_port(ip, port):
+            banner = get_banner(ip, port)
+            # Banners can contain newlines (HTTP headers); keep the first line.
+            service = banner.splitlines()[0] if banner else "Unknown"
+            print(f"[+] Port {port} Open: {service}")
+            results.append({"port": port, "service": service})
+
+    return results
+
+
 if (__name__ == "__main__"):
     main()
