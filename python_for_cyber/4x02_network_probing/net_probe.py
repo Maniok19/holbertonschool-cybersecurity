@@ -37,22 +37,22 @@ VULNERABLE_SIGNATURES = [
 ]
 
 
-def main():
-    args = parse_args()
+def main(argv=None):
+    args = parse_args(argv)
 
-    # Parse the port range "start-end" into two ints.
     start_port, end_port = parse_port_range(args.ports)
 
-    print(f"NetProbe v1.0 initialized...")
+    print("NetProbe v1.0 initialized...")
     results = scan_ports(args.target, start_port, end_port)
 
-    # Machine-readable payload for the CISO's dashboard.
     report = [
         {
             "port": r["port"],
             "state": "open",
             "service": r["service"],
-            "vulnerability": "YES" if r["vulnerable"] else "NO",
+            "vulnerability": (
+                "YES" if is_vulnerable_service(r.get("service", "")) else "NO"
+            ),
         }
         for r in results
     ]
@@ -89,11 +89,7 @@ def parse_args(argv=None):
 
 
 def parse_port_range(spec: str):
-    """Parse a "start-end" string into a (start, end) tuple of ints.
-
-    Raises:
-        SystemExit: if the spec is malformed or out of range.
-    """
+    """Parse a "start-end" string into a (start, end) tuple of ints."""
     try:
         start_s, end_s = spec.split("-", 1)
         start, end = int(start_s), int(end_s)
@@ -171,6 +167,18 @@ def check_vulnerability(banner: str) -> str:
     return ""
 
 
+def is_vulnerable_service(service: str) -> bool:
+    """Return True if a service string matches a vulnerable signature.
+
+    Works on any string (banner or assembled service name), so callers
+    don't need a separate 'vulnerable' field to be present.
+    """
+    if not service:
+        return False
+    lowered = service.lower()
+    return any(sig in lowered for sig in VULNERABLE_SIGNATURES)
+
+
 def get_service_info(ip: str, port: int) -> str:
     """Return a best-effort service name for an open port."""
     banner = get_banner(ip, port)
@@ -181,9 +189,8 @@ def get_service_info(ip: str, port: int) -> str:
         guess = guess_service(port)
         service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
 
-    status = check_vulnerability(banner if banner != "Unknown" else "")
-    if status:
-        return f"{service} {status}"
+    if is_vulnerable_service(banner if banner != "Unknown" else ""):
+        return f"{service} [VULNERABLE]"
     return service
 
 
@@ -200,8 +207,8 @@ def _probe_port(ip: str, port: int):
         guess = guess_service(port)
         service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
 
-    vulnerable = bool(check_vulnerability
-                      (banner if banner != "Unknown" else ""))
+    vuln_banner = banner if banner != "Unknown" else ""
+    vulnerable = is_vulnerable_service(vuln_banner)
 
     return {
         "port": port,
@@ -232,11 +239,29 @@ def scan_ports(ip: str,
             except Exception as exc:
                 print(f"[!] Port {port} probe failed: {exc}")
                 continue
-            if result is not None:
-                tag = " [VULNERABLE]" if result["vulnerable"] else ""
-                print
-                (f"[+] Port {result['port']} Open: {result['service']}{tag}")
-                results.append(result)
+            if result is None:
+                continue
+
+            service = result.get("service", "Unknown")
+            # Derive vulnerability from the service string, so we never
+            # depend on a 'vulnerable' key being present.
+            vulnerable = result.get(
+                "vulnerable", is_vulnerable_service(service)
+            )
+
+            if vulnerable:
+                tag = " [VULNERABLE]"
+            else:
+                tag = ""
+
+            print(
+                f"[+] Port {result['port']} Open: {service}{tag}"
+            )
+            results.append(
+                {"port": result["port"],
+                 "service": service,
+                 "vulnerable": vulnerable}
+            )
 
     results.sort(key=lambda r: r["port"])
     return results
