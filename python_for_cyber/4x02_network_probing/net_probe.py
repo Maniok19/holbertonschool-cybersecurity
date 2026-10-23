@@ -20,7 +20,7 @@ def check_port(ip: str, port: int) -> bool:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1.0)
     try:
-        socket.create_connection(ip, port)
+        sock.connect((ip, port))
         return True
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
