@@ -3,6 +3,7 @@ import argparse
 import json
 import socket
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -43,7 +44,12 @@ def main(argv=None):
     start_port, end_port = parse_port_range(args.ports)
 
     print("NetProbe v1.0 initialized...")
-    results = scan_ports(args.target, start_port, end_port)
+    results = scan_ports(
+        args.target,
+        start_port,
+        end_port,
+        delay=args.delay,
+    )
 
     report = [
         {
@@ -84,6 +90,12 @@ def parse_args(argv=None):
     parser.add_argument(
         "-o", "--output",
         help="Write results to this JSON file (optional)",
+    )
+    parser.add_argument(
+        "-d", "--delay",
+        type=float,
+        default=0.0,
+        help="Seconds to sleep between scan attempts (evade IDS; default 0)",
     )
     return parser.parse_args(argv)
 
@@ -168,11 +180,7 @@ def check_vulnerability(banner: str) -> str:
 
 
 def is_vulnerable_service(service: str) -> bool:
-    """Return True if a service string matches a vulnerable signature.
-
-    Works on any string (banner or assembled service name), so callers
-    don't need a separate 'vulnerable' field to be present.
-    """
+    """Return True if a service string matches a vulnerable signature."""
     if not service:
         return False
     lowered = service.lower()
@@ -194,8 +202,16 @@ def get_service_info(ip: str, port: int) -> str:
     return service
 
 
-def _probe_port(ip: str, port: int):
-    """Worker: check a single port and return a result dict, or None."""
+def _probe_port(ip: str, port: int, delay: float = 0.0):
+    """Worker: check a single port and return a result dict, or None.
+
+    If ``delay`` is positive, sleeps before this probe's connect attempt
+    to space out packets and avoid tripping IDS rate thresholds.
+    """
+    if delay > 0:
+        print(f"[DEBUG] Sleeping {delay}s before next packet...")
+        time.sleep(delay)
+
     if not check_port(ip, port):
         return None
 
@@ -220,7 +236,8 @@ def _probe_port(ip: str, port: int):
 def scan_ports(ip: str,
                start_port: int,
                end_port: int,
-               max_workers: int = 50) -> list:
+               max_workers: int = 50,
+               delay: float = 0.0) -> list:
     """Scan a range of TCP ports on a single host, concurrently."""
     print(f"Scanning {ip} from {start_port} to {end_port}...")
 
@@ -229,7 +246,8 @@ def scan_ports(ip: str,
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_port = {
-            executor.submit(_probe_port, ip, port): port for port in ports
+            executor.submit(_probe_port, ip, port, delay): port
+            for port in ports
         }
 
         for future in as_completed(future_to_port):
@@ -243,8 +261,6 @@ def scan_ports(ip: str,
                 continue
 
             service = result.get("service", "Unknown")
-            # Derive vulnerability from the service string, so we never
-            # depend on a 'vulnerable' key being present.
             vulnerable = result.get(
                 "vulnerable", is_vulnerable_service(service)
             )
