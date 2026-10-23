@@ -8,16 +8,7 @@ def main():
 
 
 def check_port(ip: str, port: int) -> bool:
-    """Check if a TCP port on the given IP is open.
-
-    Args:
-        ip: Target IPv4 address as a string.
-        port: Target TCP port number.
-
-    Returns:
-        True if the connection succeeds, False on connection refused,
-        timeout, or any socket error.
-    """
+    """Check if a TCP port on the given IP is open."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1.0)
     try:
@@ -30,12 +21,12 @@ def check_port(ip: str, port: int) -> bool:
 
 
 def ping_sweep(subnet: str) -> list:
-    """Check if a TCP port on the given IP is open."""
+    """Scan port 80 on every host in a /24 subnet."""
     base = subnet.split("/")[0]
     prefix = ".".join(base.split(".")[:3])
 
     live = []
-    for host in range(1, 255):  # .1 through .254 inclusive
+    for host in range(1, 255):
         ip = f"{prefix}.{host}"
         if check_port(ip, 80):
             live.append(ip)
@@ -43,6 +34,7 @@ def ping_sweep(subnet: str) -> list:
 
 
 def get_banner(ip: str, port: int) -> str:
+    """Grab a service banner from an open TCP port."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(2.0)
     try:
@@ -60,6 +52,16 @@ def get_banner(ip: str, port: int) -> str:
         return "Unknown"
     finally:
         sock.close()
+
+
+def _probe_port(ip: str, port: int):
+    """Worker: check a single port and return its result dict, or None."""
+    if not check_port(ip, port):
+        return None
+
+    banner = get_banner(ip, port)
+    service = banner.splitlines()[0] if banner else "Unknown"
+    return {"port": port, "service": service}
 
 
 def scan_ports(ip: str,
@@ -81,7 +83,7 @@ def scan_ports(ip: str,
             port = future_to_port[future]
             try:
                 result = future.result()
-            except Exception as exc:  # defensive: worker should not raise
+            except Exception as exc:
                 print(f"[!] Port {port} probe failed: {exc}")
                 continue
             if result is not None:
@@ -92,5 +94,5 @@ def scan_ports(ip: str,
     return results
 
 
-if (__name__ == "__main__"):
+if __name__ == "__main__":
     main()
