@@ -1,6 +1,25 @@
-#!/usr/bin/env python3
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+# Common ports -> service name, used when a service is silent.
+COMMON_PORTS = {
+    21: "FTP",
+    22: "SSH",
+    23: "Telnet",
+    25: "SMTP",
+    53: "DNS",
+    80: "HTTP",
+    110: "POP3",
+    143: "IMAP",
+    443: "HTTPS",
+    445: "SMB",
+    3306: "MySQL",
+    3389: "RDP",
+    5432: "PostgreSQL",
+    6379: "Redis",
+    8080: "HTTP-Alt",
+}
 
 
 def main():
@@ -54,13 +73,53 @@ def get_banner(ip: str, port: int) -> str:
         sock.close()
 
 
+def guess_service(port: int) -> str:
+    """Guess a service name from a well-known port number.
+
+    Args:
+        port: TCP port number.
+
+    Returns:
+        A human-readable service name for the port, or "Unknown" if the
+        port isn't in our table. When used as a fallback for a silent
+        service, the caller appends " (Guessed)".
+    """
+    return COMMON_PORTS.get(port, "Unknown")
+
+
+def get_service_info(ip: str, port: int) -> str:
+    """Return a best-effort service name for an open port.
+
+    Tries the real banner first; if the service is silent (empty/unknown
+    banner), falls back to guessing from the port number.
+
+    Args:
+        ip: Target IPv4 address.
+        port: Target TCP port number.
+
+    Returns:
+        The banner's first line if available, otherwise
+        "<Service> (Guessed)", or "Unknown" if nothing can be determined.
+    """
+    banner = get_banner(ip, port)
+
+    # get_banner returns "Unknown" when the socket fails, and "" after
+    # .strip() when the server sent only whitespace/newlines.
+    if banner and banner != "Unknown":
+        return banner.splitlines()[0]
+
+    guess = guess_service(port)
+    if guess != "Unknown":
+        return f"{guess} (Guessed)"
+    return "Unknown"
+
+
 def _probe_port(ip: str, port: int):
     """Worker: check a single port and return its result dict, or None."""
     if not check_port(ip, port):
         return None
 
-    banner = get_banner(ip, port)
-    service = banner.splitlines()[0] if banner else "Unknown"
+    service = get_service_info(ip, port)
     return {"port": port, "service": service}
 
 
