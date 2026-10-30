@@ -27,6 +27,9 @@ COMMON_PORTS = {
     8080: "HTTP-Alt",
 }
 
+# Ports we treat as web services for deep HTTP inspection.
+HTTP_PORTS = {80, 8080, 8000, 8888}
+
 # Known-vulnerable signatures. Matching is case-insensitive substring.
 VULNERABLE_SIGNATURES = [
     "vsftpd 2.3.4",        # CVE-2011-2523 (backdoor)
@@ -79,6 +82,8 @@ def main(argv=None):
                 "port": r["port"],
                 "state": "open",
                 "service": r["service"],
+                "version": r.get("version", ""),
+                "server_header": r.get("server_header", ""),
                 "vulnerability": "YES" if r["vulnerable"] else "NO",
             }
             for r in results
@@ -161,11 +166,7 @@ def resolve_hostname(ip: str) -> str:
 
 
 def is_local_ip(ip: str) -> bool:
-    """Return True if `ip` is an address assigned to a local interface.
-
-    Binds a throwaway socket to (ip, 0); if that fails the address is
-    not local (or not usable as a source).
-    """
+    """Return True if `ip` is an address assigned to a local interface."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.bind((ip, 0))
@@ -238,6 +239,67 @@ def get_banner(ip: str, port: int, source_ip: str = None) -> str:
         sock.close()
 
 
+def parse_server_header(response: str) -> str:
+    """Extract the value of the 'Server' header from a raw HTTP response.
+
+    Returns '' if no Server header is present.
+    """
+    for line in response.splitlines():
+        if ":" not in line:
+            continue
+        name, _, value = line.partition(":")
+        if name.strip().lower() == "server":
+            return value.strip()
+    return ""
+
+
+def http_probe(ip: str, port: int, source_ip: str = None) -> dict:
+    """Send a real HTTP GET request and extract the Server header.
+
+    Returns a dict with keys 'server_header' and 'raw'. Both are empty
+    strings on failure.
+    """
+    result = {"server_header": "", "raw": ""}
+    try:
+        sock = make_socket(source_ip)
+    except OSError:
+        return result
+
+    sock.settimeout(3.0)
+    try:
+        sock.connect((ip, port))
+        request = (
+            f"GET / HTTP/1.1\r\n"
+            f"Host: {ip}\r\n"
+            f"User-Agent: NetProbe/1.0\r\n"
+            f"Connection: close\r\n"
+            f"\r\n"
+        ).encode("ascii")
+        sock.sendall(request)
+
+        chunks = []
+        while True:
+            try:
+                chunk = sock.recv(4096)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            chunks.append(chunk)
+            # Cap total read to avoid huge pages.
+            if sum(len(c) for c in chunks) >= 65536:
+                break
+
+        raw = b"".join(chunks).decode("utf-8", errors="replace")
+        result["raw"] = raw
+        result["server_header"] = parse_server_header(raw)
+        return result
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return result
+    finally:
+        sock.close()
+
+
 def guess_service(port: int) -> str:
     """Guess a service name from a well-known port number."""
     return COMMON_PORTS.get(port, "Unknown")
@@ -278,6 +340,63 @@ def get_service_info(ip: str, port: int, source_ip: str = None) -> str:
     return service
 
 
+def inspect_service(ip: str, port: int, source_ip: str = None) -> dict:
+    """Best-effort service identification for an open port.
+
+    For web ports (HTTP_PORTS) performs a real HTTP GET and extracts
+    the Server header as the version. For other ports falls back to a
+    banner grab, then to a well-known-port guess.
+    """
+    service = "Unknown"
+    version = ""
+    server_header = ""
+
+    if port in HTTP_PORTS:
+        probe = http_probe(ip, port, source_ip)
+        server_header = probe["server_header"]
+        raw = probe["raw"]
+
+        if raw:
+            # Try to determine protocol + version from the response.
+            status = raw.splitlines()[0] if raw else ""
+            if "HTTP/" in status:
+                # Status line: "HTTP/1.1 200 OK"
+                http_version = status.split("/", 1)[1].split(" ", 1)[0]
+            else:
+                http_version = ""
+
+            if server_header:
+                # server_header looks like "nginx/1.18.0" or "Apache/2.4.41"
+                service = "HTTP"
+                version = server_header
+            else:
+                service = "HTTP"
+                version = f"HTTP/{http_version}" if http_version else ""
+        else:
+            # Connected but got nothing usable — fall back to guess.
+            guess = guess_service(port)
+            service = guess if guess != "Unknown" else "HTTP"
+    else:
+        banner = get_banner(ip, port, source_ip)
+        if banner and banner != "Unknown":
+            service = banner.splitlines()[0]
+        else:
+            guess = guess_service(port)
+            service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
+
+    vulnerable = is_vulnerable_service(
+        f"{service} {version} {server_header}".strip()
+    )
+
+    return {
+        "port": port,
+        "service": service,
+        "version": version,
+        "server_header": server_header,
+        "vulnerable": vulnerable,
+    }
+
+
 def _probe_port(ip: str, port: int, delay: float = 0.0,
                 source_ip: str = None):
     """Worker: check a single port and return a result dict, or None."""
@@ -288,22 +407,26 @@ def _probe_port(ip: str, port: int, delay: float = 0.0,
     if not check_port(ip, port, source_ip):
         return None
 
-    banner = get_banner(ip, port, source_ip)
+    return inspect_service(ip, port, source_ip)
 
-    if banner and banner != "Unknown":
-        service = banner.splitlines()[0]
+
+def format_result(result: dict) -> str:
+    """Format a single scan result for console output."""
+    service = result.get("service", "Unknown")
+    version = result.get("version", "")
+
+    if version and service == "HTTP":
+        # Expected: [+] Port 80: HTTP (nginx/1.18.0)
+        label = f"{service} ({version})"
+    elif version:
+        label = f"{service} ({version})"
     else:
-        guess = guess_service(port)
-        service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
+        label = service
 
-    vuln_banner = banner if banner != "Unknown" else ""
-    vulnerable = is_vulnerable_service(vuln_banner)
+    if result.get("vulnerable"):
+        label += " [VULNERABLE]"
 
-    return {
-        "port": port,
-        "service": service,
-        "vulnerable": vulnerable,
-    }
+    return f"[+] Port {result['port']}: {label}"
 
 
 def scan_ports(ip: str,
@@ -340,24 +463,8 @@ def scan_ports(ip: str,
             if result is None:
                 continue
 
-            service = result.get("service", "Unknown")
-            vulnerable = result.get(
-                "vulnerable", is_vulnerable_service(service)
-            )
-
-            if vulnerable:
-                tag = " [VULNERABLE]"
-            else:
-                tag = ""
-
-            print(
-                f"[+] Port {result['port']} Open: {service}{tag}"
-            )
-            results.append(
-                {"port": result["port"],
-                 "service": service,
-                 "vulnerable": vulnerable}
-            )
+            print(format_result(result))
+            results.append(result)
 
     results.sort(key=lambda r: r["port"])
     return results
