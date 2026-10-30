@@ -28,27 +28,62 @@ def _normalize_result(r: dict) -> dict:
     }
 
 
+class ScanReport(list):
+    """A list of result dicts that also carries report header metadata.
+
+    Iterating / indexing it yields port result dicts (legacy list view).
+    Accessing .target / .hostname / .results / .to_dict() yields the
+    structured header view used by the refactored reporter.
+    """
+
+    def __init__(self, target, hostname, source_ip,
+                 start_port, end_port, results):
+        normalized = [_normalize_result(r) for r in results]
+        super().__init__(normalized)
+        self.target = target
+        self.hostname = hostname
+        self.source_ip = source_ip
+        self.start_port = start_port
+        self.end_port = end_port
+        self.results = normalized
+
+    def to_dict(self) -> dict:
+        return {
+            "target": self.target,
+            "hostname": self.hostname,
+            "source_ip": self.source_ip,
+            "scan": {
+                "start_port": self.start_port,
+                "end_port": self.end_port,
+            },
+            "results": self.results,
+        }
+
+
 def build_report(target: str,
                  hostname: str,
                  source_ip: str,
                  start_port: int,
                  end_port: int,
-                 results: list) -> dict:
-    """Assemble the final report dict from scan results."""
-    return {
-        "target": target,
-        "hostname": hostname,
-        "source_ip": source_ip,
-        "scan": {
-            "start_port": start_port,
-            "end_port": end_port,
-        },
-        "results": [_normalize_result(r) for r in results],
-    }
+                 results: list) -> ScanReport:
+    """Assemble the final report object from scan results."""
+    return ScanReport(
+        target=target,
+        hostname=hostname,
+        source_ip=source_ip,
+        start_port=start_port,
+        end_port=end_port,
+        results=results,
+    )
 
 
-def write_report(report: dict, path: str) -> None:
-    """Write the report dict to a JSON file."""
+def write_report(report, path: str) -> None:
+    """Write the report to a JSON file.
+
+    Accepts either a ScanReport or a plain dict; always serializes the
+    structured header + flat 'results' list.
+    """
+    data = report.to_dict() if hasattr(report, "to_dict") else report
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(report, fh, indent=2)
+        json.dump(data, fh, indent=2)
     print(f"[*] Report written to {path}")
