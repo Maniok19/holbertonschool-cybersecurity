@@ -16,6 +16,14 @@ CACHE_TTL = 3600  # 1 hour, in seconds
 MAX_CONCURRENCY = 5
 UNAVAILABLE = {"error": "Unavailable"}
 
+VERBOSE = False
+
+
+def status(message):
+    """Print a status line when verbose mode is enabled."""
+    if VERBOSE:
+        print(message)
+
 
 class TargetDossier:
     """Holds aggregated intelligence about a single target IP."""
@@ -109,8 +117,7 @@ async def fetch_api(session, url, semaphore=None):
 
     On any HTTP error (non-200), connection failure, timeout, or
     invalid JSON, returns {"error": "Unavailable"} so callers can
-    proceed without crashing. When `semaphore` is provided, the
-    request holds it for the duration of the HTTP exchange.
+    proceed without crashing.
     """
     import aiohttp
 
@@ -148,6 +155,13 @@ async def _fetch_or_cache(session, ip, source, semaphore):
     if cached is not None:
         return cached.get(source, {})
 
+    labels = {
+        "virustotal": "VirusTotal",
+        "shodan": "Shodan",
+        "abuseipdb": "AbuseIPDB",
+    }
+    status("[+] Querying %s..." % labels.get(source, source))
+
     url = "%s/%s/%s" % (BASE_URL, source, ip)
     data = await fetch_api(session, url, semaphore)
     if data and not _is_unavailable(data):
@@ -171,7 +185,7 @@ async def gather_intel(ip):
     """
     cached = _cache_get(ip)
     if cached is not None:
-        print("[*] Cache hit for %s (age < 1h)" % ip)
+        status("[*] Cache hit for %s (age < 1h)" % ip)
         return (
             cached.get("virustotal", {}),
             cached.get("shodan", {}),
@@ -182,8 +196,11 @@ async def gather_intel(ip):
         import aiohttp
     except ImportError:
         print("[!] aiohttp not installed; falling back to sync requests")
+        status("[+] Querying VirusTotal...")
         vt = _get_json("virustotal/%s" % ip)
+        status("[+] Querying Shodan...")
         sh = _get_json("shodan/%s" % ip)
+        status("[+] Querying AbuseIPDB...")
         ab = _get_json("abuseipdb/%s" % ip)
         bundle = {"virustotal": vt, "shodan": sh, "abuseipdb": ab}
         if any(v and not _is_unavailable(v) for v in bundle.values()):
@@ -208,6 +225,7 @@ async def run_nmap_async(ip):
     Returns the raw XML stdout as a str. Returns '' if nmap fails
     or is not installed.
     """
+    status("[+] Launching nmap...")
     try:
         process = await asyncio.create_subprocess_exec(
             "nmap", "-p", "22,80", ip, "-oX", "-",
@@ -226,15 +244,12 @@ async def run_nmap_async(ip):
               % (process.returncode, err))
         return ""
 
+    status("[+] Nmap finished.")
     return stdout.decode("utf-8", "replace")
 
 
 def _get_json(endpoint):
-    """Sync GET an endpoint from the mock API and return parsed JSON.
-
-    Returns {"error": "Unavailable"} on any failure so the caller
-    can treat sync and async paths the same way.
-    """
+    """Sync GET an endpoint from the mock API and return parsed JSON."""
     try:
         import requests
     except ImportError:
@@ -265,6 +280,7 @@ def query_virustotal(ip):
     cached = _cache_get(ip)
     if cached is not None and "virustotal" in cached:
         return cached["virustotal"]
+    status("[+] Querying VirusTotal...")
     data = _get_json("virustotal/%s" % ip)
     if data and not _is_unavailable(data):
         _cache_put(ip, _merge_cache(ip, "virustotal", data))
@@ -276,6 +292,7 @@ def query_abuseipdb(ip):
     cached = _cache_get(ip)
     if cached is not None and "abuseipdb" in cached:
         return cached["abuseipdb"]
+    status("[+] Querying AbuseIPDB...")
     data = _get_json("abuseipdb/%s" % ip)
     if data and not _is_unavailable(data):
         _cache_put(ip, _merge_cache(ip, "abuseipdb", data))
@@ -284,6 +301,7 @@ def query_abuseipdb(ip):
 
 def run_nmap(ip):
     """Run 'nmap -p 22,80 <IP> -oX -' and return the raw XML stdout."""
+    status("[+] Launching nmap...")
     command = ["nmap", "-p", "22,80", ip, "-oX", "-"]
     result = subprocess.run(
         command,
@@ -297,6 +315,7 @@ def run_nmap(ip):
             % (result.returncode, result.stderr.strip())
         )
 
+    status("[+] Nmap finished.")
     return result.stdout
 
 
@@ -362,6 +381,8 @@ def write_report(dossier, path):
 
 
 def main(argv=None):
+    global VERBOSE
+
     parser = argparse.ArgumentParser(
         prog="intel_broker",
         description="Aggregate intel about an IP from mock APIs and nmap.",
@@ -371,13 +392,21 @@ def main(argv=None):
         "-o", "--output",
         help="Write the dossier to this JSON file (optional)",
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Print progress and status messages",
+    )
     args = parser.parse_args(argv)
+
+    VERBOSE = args.verbose
 
     dossier = asyncio.run(build_dossier_async(args.ip))
     print(dossier)
 
     if args.output:
         write_report(dossier, args.output)
+        print("[SUCCESS] Report generated.")
 
     return dossier
 
