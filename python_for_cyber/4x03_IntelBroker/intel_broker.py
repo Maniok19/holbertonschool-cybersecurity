@@ -14,6 +14,7 @@ BASE_URL = "http://localhost:5000"
 CACHE_FILE = "cache.json"
 CACHE_TTL = 3600  # 1 hour, in seconds
 MAX_CONCURRENCY = 5
+UNAVAILABLE = {"error": "Unavailable"}
 
 
 class TargetDossier:
@@ -98,11 +99,18 @@ def _cache_put(ip, data):
     _save_cache(cache)
 
 
+def _is_unavailable(data):
+    """Return True if `data` marks the source as unavailable."""
+    return isinstance(data, dict) and data.get("error") == "Unavailable"
+
+
 async def fetch_api(session, url, semaphore=None):
     """Async GET a mock-API URL and return parsed JSON.
 
-    When `semaphore` is provided, the request holds it for the
-    duration of the HTTP exchange to cap concurrency.
+    On any HTTP error (non-200), connection failure, timeout, or
+    invalid JSON, returns {"error": "Unavailable"} so callers can
+    proceed without crashing. When `semaphore` is provided, the
+    request holds it for the duration of the HTTP exchange.
     """
     import aiohttp
 
@@ -113,25 +121,25 @@ async def fetch_api(session, url, semaphore=None):
 
 
 async def _fetch_api_inner(session, url, aiohttp):
-    """Do the actual HTTP GET; factored out to keep fetch_api clean."""
+    """Do the actual HTTP GET; return UNAVAILABLE on any failure."""
     try:
         async with session.get(
             url, timeout=aiohttp.ClientTimeout(total=5)
         ) as response:
             if response.status != 200:
-                print("[!] Unexpected status: %s" % response.status)
-                return {}
+                print("[!] HTTP %s from %s" % (response.status, url))
+                return dict(UNAVAILABLE)
             try:
                 return await response.json()
             except (aiohttp.ContentTypeError, ValueError) as exc:
-                print("[!] Invalid JSON in response: %s" % exc)
-                return {}
+                print("[!] Invalid JSON from %s: %s" % (url, exc))
+                return dict(UNAVAILABLE)
     except aiohttp.ClientConnectionError as exc:
         print("[!] Connection error: %s" % exc)
-        return {}
+        return dict(UNAVAILABLE)
     except asyncio.TimeoutError as exc:
         print("[!] Timeout: %s" % exc)
-        return {}
+        return dict(UNAVAILABLE)
 
 
 async def _fetch_or_cache(session, ip, source, semaphore):
@@ -142,7 +150,7 @@ async def _fetch_or_cache(session, ip, source, semaphore):
 
     url = "%s/%s/%s" % (BASE_URL, source, ip)
     data = await fetch_api(session, url, semaphore)
-    if data:
+    if data and not _is_unavailable(data):
         _cache_put(ip, _merge_cache(ip, source, data))
     return data
 
@@ -157,10 +165,9 @@ def _merge_cache(ip, source, new_data):
 async def gather_intel(ip):
     """Query VirusTotal, Shodan, and AbuseIPDB in parallel.
 
-    Uses the on-disk cache when an entry for `ip` is under 1 hour old.
     Caps concurrent in-flight requests at MAX_CONCURRENCY via a
-    shared asyncio.Semaphore. Falls back to sync requests if aiohttp
-    is unavailable.
+    shared asyncio.Semaphore. A failure from one source does not
+    abort the others; the failed source yields UNAVAILABLE.
     """
     cached = _cache_get(ip)
     if cached is not None:
@@ -179,7 +186,7 @@ async def gather_intel(ip):
         sh = _get_json("shodan/%s" % ip)
         ab = _get_json("abuseipdb/%s" % ip)
         bundle = {"virustotal": vt, "shodan": sh, "abuseipdb": ab}
-        if any(bundle.values()):
+        if any(v and not _is_unavailable(v) for v in bundle.values()):
             _cache_put(ip, bundle)
         return vt, sh, ab
 
@@ -223,29 +230,34 @@ async def run_nmap_async(ip):
 
 
 def _get_json(endpoint):
-    """Sync GET an endpoint from the mock API and return parsed JSON."""
+    """Sync GET an endpoint from the mock API and return parsed JSON.
+
+    Returns {"error": "Unavailable"} on any failure so the caller
+    can treat sync and async paths the same way.
+    """
     try:
         import requests
     except ImportError:
         print("[!] requests not installed; returning empty data")
-        return {}
+        return dict(UNAVAILABLE)
 
     url = "%s/%s" % (BASE_URL, endpoint)
     try:
         response = requests.get(url, timeout=5)
     except requests.exceptions.ConnectionError as exc:
         print("[!] Connection error: %s" % exc)
-        return {}
+        return dict(UNAVAILABLE)
 
     if response.status_code != 200:
-        print("[!] Unexpected status: %s" % response.status_code)
-        return {}
+        print("[!] HTTP %s from %s"
+              % (response.status_code, url))
+        return dict(UNAVAILABLE)
 
     try:
         return response.json()
     except ValueError as exc:
         print("[!] Invalid JSON in response: %s" % exc)
-        return {}
+        return dict(UNAVAILABLE)
 
 
 def query_virustotal(ip):
@@ -254,7 +266,7 @@ def query_virustotal(ip):
     if cached is not None and "virustotal" in cached:
         return cached["virustotal"]
     data = _get_json("virustotal/%s" % ip)
-    if data:
+    if data and not _is_unavailable(data):
         _cache_put(ip, _merge_cache(ip, "virustotal", data))
     return data
 
@@ -265,7 +277,7 @@ def query_abuseipdb(ip):
     if cached is not None and "abuseipdb" in cached:
         return cached["abuseipdb"]
     data = _get_json("abuseipdb/%s" % ip)
-    if data:
+    if data and not _is_unavailable(data):
         _cache_put(ip, _merge_cache(ip, "abuseipdb", data))
     return data
 
