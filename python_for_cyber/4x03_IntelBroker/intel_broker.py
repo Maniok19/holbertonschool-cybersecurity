@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """IntelBroker: query mock APIs and run live nmap scans."""
 import subprocess
+import xml.etree.ElementTree as ET
 
 import requests
 
@@ -63,7 +64,31 @@ def run_nmap(ip):
     return result.stdout
 
 
+def parse_nmap_xml(xml_data):
+    """Parse nmap XML output and return a list of open port numbers."""
+    try:
+        root = ET.fromstring(xml_data)
+    except ET.ParseError as exc:
+        print("[!] Could not parse nmap XML: %s" % exc)
+        return []
+
+    open_ports = []
+    for port in root.iter("port"):
+        state_el = port.find("state")
+        if state_el is None:
+            continue
+        if state_el.get("state") != "open":
+            continue
+        portid = port.get("portid")
+        if portid is None:
+            continue
+        open_ports.append(int(portid))
+
+    return open_ports
+
+
 if __name__ == "__main__":
     print(query_virustotal("1.2.3.4"))
     print(query_abuseipdb("1.2.3.4"))
-    print(run_nmap("127.0.0.1")[:200])
+    xml = run_nmap("127.0.0.1")
+    print(parse_nmap_xml(xml))
