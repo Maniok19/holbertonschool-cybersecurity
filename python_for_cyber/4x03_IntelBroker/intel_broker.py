@@ -4,11 +4,15 @@ import argparse
 import asyncio
 import datetime
 import json
+import os
 import subprocess
+import time
 import xml.etree.ElementTree as ET
 
 
 BASE_URL = "http://localhost:5000"
+CACHE_FILE = "cache.json"
+CACHE_TTL = 3600  # 1 hour, in seconds
 
 
 class TargetDossier:
@@ -54,6 +58,45 @@ class TargetDossier:
         }
 
 
+def _load_cache():
+    """Load the cache file. Returns {} if missing or corrupt."""
+    if not os.path.exists(CACHE_FILE):
+        return {}
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (ValueError, OSError) as exc:
+        print("[!] Could not read cache: %s" % exc)
+        return {}
+
+
+def _save_cache(cache):
+    """Write the cache dict to disk as JSON."""
+    try:
+        with open(CACHE_FILE, "w", encoding="utf-8") as fh:
+            json.dump(cache, fh, indent=2)
+    except OSError as exc:
+        print("[!] Could not write cache: %s" % exc)
+
+
+def _cache_get(ip):
+    """Return cached intel for `ip` if fresh (< 1 hour), else None."""
+    cache = _load_cache()
+    entry = cache.get(ip)
+    if not entry:
+        return None
+    if time.time() - entry.get("timestamp", 0) > CACHE_TTL:
+        return None
+    return entry.get("data")
+
+
+def _cache_put(ip, data):
+    """Store intel for `ip` in the cache with the current timestamp."""
+    cache = _load_cache()
+    cache[ip] = {"timestamp": time.time(), "data": data}
+    _save_cache(cache)
+
+
 async def fetch_api(session, url):
     """Async GET a mock-API URL and return parsed JSON."""
     import aiohttp
@@ -78,33 +121,61 @@ async def fetch_api(session, url):
         return {}
 
 
+async def _fetch_or_cache(session, ip, source):
+    """Fetch one API source for `ip`, using the cache when fresh.
+
+    `source` is one of 'virustotal', 'shodan', 'abuseipdb'.
+    """
+    cached = _cache_get(ip)
+    if cached is not None:
+        return cached.get(source, {})
+
+    url = "%s/%s/%s" % (BASE_URL, source, ip)
+    data = await fetch_api(session, url)
+    if data:
+        _cache_put(ip, _merge_cache(ip, source, data))
+    return data
+
+
+def _merge_cache(ip, source, new_data):
+    """Merge a single source's fresh data into the cached bundle."""
+    bundle = _cache_get(ip) or {}
+    bundle[source] = new_data
+    return bundle
+
+
 async def gather_intel(ip):
     """Query VirusTotal, Shodan, and AbuseIPDB in parallel.
 
-    Falls back to sync requests (sequentially) if aiohttp is not
-    installed, and to empty dicts if requests is also unavailable.
+    Uses the on-disk cache when an entry for `ip` is under 1 hour old.
+    Falls back to sync requests if aiohttp is unavailable.
     """
+    cached = _cache_get(ip)
+    if cached is not None:
+        print("[*] Cache hit for %s (age < 1h)" % ip)
+        return (
+            cached.get("virustotal", {}),
+            cached.get("shodan", {}),
+            cached.get("abuseipdb", {}),
+        )
+
     try:
         import aiohttp
     except ImportError:
         print("[!] aiohttp not installed; falling back to sync requests")
-        return (
-            _get_json("virustotal/%s" % ip),
-            _get_json("shodan/%s" % ip),
-            _get_json("abuseipdb/%s" % ip),
-        )
-
-    urls = (
-        "%s/virustotal/%s" % (BASE_URL, ip),
-        "%s/shodan/%s" % (BASE_URL, ip),
-        "%s/abuseipdb/%s" % (BASE_URL, ip),
-    )
+        vt = _get_json("virustotal/%s" % ip)
+        sh = _get_json("shodan/%s" % ip)
+        ab = _get_json("abuseipdb/%s" % ip)
+        bundle = {"virustotal": vt, "shodan": sh, "abuseipdb": ab}
+        if any(bundle.values()):
+            _cache_put(ip, bundle)
+        return vt, sh, ab
 
     async with aiohttp.ClientSession() as session:
         vt_data, shodan_data, abuse_data = await asyncio.gather(
-            fetch_api(session, urls[0]),
-            fetch_api(session, urls[1]),
-            fetch_api(session, urls[2]),
+            _fetch_or_cache(session, ip, "virustotal"),
+            _fetch_or_cache(session, ip, "shodan"),
+            _fetch_or_cache(session, ip, "abuseipdb"),
         )
 
     return vt_data, shodan_data, abuse_data
@@ -164,13 +235,25 @@ def _get_json(endpoint):
 
 
 def query_virustotal(ip):
-    """Query the (mock) VirusTotal API for an IP's reputation."""
-    return _get_json("virustotal/%s" % ip)
+    """Query the (mock) VirusTotal API, with caching."""
+    cached = _cache_get(ip)
+    if cached is not None and "virustotal" in cached:
+        return cached["virustotal"]
+    data = _get_json("virustotal/%s" % ip)
+    if data:
+        _cache_put(ip, _merge_cache(ip, "virustotal", data))
+    return data
 
 
 def query_abuseipdb(ip):
-    """Query the (mock) AbuseIPDB API for an IP's abuse reports."""
-    return _get_json("abuseipdb/%s" % ip)
+    """Query the (mock) AbuseIPDB API, with caching."""
+    cached = _cache_get(ip)
+    if cached is not None and "abuseipdb" in cached:
+        return cached["abuseipdb"]
+    data = _get_json("abuseipdb/%s" % ip)
+    if data:
+        _cache_put(ip, _merge_cache(ip, "abuseipdb", data))
+    return data
 
 
 def run_nmap(ip):

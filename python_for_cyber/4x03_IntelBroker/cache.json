@@ -1,0 +1,26 @@
+{
+  "1.2.3.4": {
+    "timestamp": 1793365850.1777482,
+    "data": {
+      "shodan": {
+        "ip": "1.2.3.4",
+        "ports": [
+          80,
+          443
+        ],
+        "os": "Linux",
+        "isp": "CloudNet"
+      },
+      "abuseipdb": {
+        "ip": "1.2.3.4",
+        "abuse_confidence_score": 49,
+        "reports": 19
+      },
+      "virustotal": {
+        "ip": "1.2.3.4",
+        "reputation_score": 5,
+        "malicious": false
+      }
+    }
+  }
+}
