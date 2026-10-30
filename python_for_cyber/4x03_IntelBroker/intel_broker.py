@@ -55,11 +55,7 @@ class TargetDossier:
 
 
 async def fetch_api(session, url):
-    """Async GET a mock-API URL and return parsed JSON.
-
-    Returns the parsed dict on success, or an empty dict on
-    connection failure, non-200 status, or invalid JSON.
-    """
+    """Async GET a mock-API URL and return parsed JSON."""
     import aiohttp
 
     try:
@@ -85,9 +81,18 @@ async def fetch_api(session, url):
 async def gather_intel(ip):
     """Query VirusTotal, Shodan, and AbuseIPDB in parallel.
 
-    Returns a tuple (vt_data, shodan_data, abuse_data), each a dict.
+    Falls back to sync requests (sequentially) if aiohttp is not
+    installed, and to empty dicts if requests is also unavailable.
     """
-    import aiohttp
+    try:
+        import aiohttp
+    except ImportError:
+        print("[!] aiohttp not installed; falling back to sync requests")
+        return (
+            _get_json("virustotal/%s" % ip),
+            _get_json("shodan/%s" % ip),
+            _get_json("abuseipdb/%s" % ip),
+        )
 
     urls = (
         "%s/virustotal/%s" % (BASE_URL, ip),
@@ -108,13 +113,18 @@ async def gather_intel(ip):
 async def run_nmap_async(ip):
     """Run 'nmap -p 22,80 <IP> -oX -' asynchronously.
 
-    Returns the raw XML stdout as a str. Returns '' if nmap fails.
+    Returns the raw XML stdout as a str. Returns '' if nmap fails
+    or is not installed.
     """
-    process = await asyncio.create_subprocess_exec(
-        "nmap", "-p", "22,80", ip, "-oX", "-",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "nmap", "-p", "22,80", ip, "-oX", "-",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        print("[!] nmap not found; skipping live scan")
+        return ""
 
     stdout, stderr = await process.communicate()
 
@@ -129,7 +139,11 @@ async def run_nmap_async(ip):
 
 def _get_json(endpoint):
     """Sync GET an endpoint from the mock API and return parsed JSON."""
-    import requests
+    try:
+        import requests
+    except ImportError:
+        print("[!] requests not installed; returning empty data")
+        return {}
 
     url = "%s/%s" % (BASE_URL, endpoint)
     try:
@@ -207,7 +221,7 @@ def build_dossier(ip):
     dossier.abuse_data = query_abuseipdb(ip)
     try:
         xml = run_nmap(ip)
-    except RuntimeError as exc:
+    except (RuntimeError, FileNotFoundError) as exc:
         print("[!] %s" % exc)
         xml = ""
     dossier.nmap_ports = parse_nmap_xml(xml)
@@ -215,11 +229,7 @@ def build_dossier(ip):
 
 
 async def build_dossier_async(ip):
-    """Populate and return a TargetDossier for the given IP (async).
-
-    Runs the three API queries and nmap concurrently, then assembles
-    the dossier.
-    """
+    """Populate and return a TargetDossier for the given IP (async)."""
     intel_task = gather_intel(ip)
     nmap_task = run_nmap_async(ip)
 
