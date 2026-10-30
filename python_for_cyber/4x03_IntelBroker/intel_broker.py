@@ -69,7 +69,6 @@ async def gather_intel(ip):
     """Query VirusTotal, Shodan, and AbuseIPDB in parallel.
 
     Returns a tuple (vt_data, shodan_data, abuse_data), each a dict.
-    Falls back to ({}, {}, {}) if aiohttp is unavailable.
     """
     import aiohttp
 
@@ -87,6 +86,27 @@ async def gather_intel(ip):
         )
 
     return vt_data, shodan_data, abuse_data
+
+
+async def run_nmap_async(ip):
+    """Run 'nmap -p 22,80 <IP> -oX -' asynchronously.
+
+    Returns the raw XML stdout as a str. Returns '' if nmap fails.
+    """
+    process = await asyncio.create_subprocess_exec(
+        "nmap", "-p", "22,80", ip, "-oX", "-",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    stdout, stderr = await process.communicate()
+
+    if process.returncode != 0:
+        print("[!] nmap failed (exit %s): %s"
+              % (process.returncode, stderr.decode("utf-8", "replace").strip()))
+        return ""
+
+    return stdout.decode("utf-8", "replace")
 
 
 def _get_json(endpoint):
