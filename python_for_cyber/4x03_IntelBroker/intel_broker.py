@@ -6,13 +6,13 @@ import requests
 BASE_URL = "http://localhost:5000"
 
 
-def query_virustotal(ip):
-    """Query the (mock) VirusTotal API for an IP's reputation.
+def _get_json(endpoint):
+    """GET an endpoint from the mock API and return parsed JSON.
 
-    Returns the parsed JSON payload as a dict on success.
-    Returns an empty dict on connection failure or non-200 status.
+    Returns the parsed dict on success, or an empty dict on
+    connection failure, non-200 status, or invalid JSON.
     """
-    url = "%s/virustotal/%s" % (BASE_URL, ip)
+    url = "%s/%s" % (BASE_URL, endpoint)
     try:
         response = requests.get(url, timeout=5)
     except requests.exceptions.ConnectionError as exc:
@@ -30,5 +30,16 @@ def query_virustotal(ip):
         return {}
 
 
+def query_virustotal(ip):
+    """Query the (mock) VirusTotal API for an IP's reputation."""
+    return _get_json("virustotal/%s" % ip)
+
+
+def query_abuseipdb(ip):
+    """Query the (mock) AbuseIPDB API for an IP's abuse reports."""
+    return _get_json("abuseipdb/%s" % ip)
+
+
 if __name__ == "__main__":
     print(query_virustotal("1.2.3.4"))
+    print(query_abuseipdb("1.2.3.4"))
