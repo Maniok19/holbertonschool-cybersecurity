@@ -102,8 +102,9 @@ async def run_nmap_async(ip):
     stdout, stderr = await process.communicate()
 
     if process.returncode != 0:
+        err = stderr.decode("utf-8", "replace").strip()
         print("[!] nmap failed (exit %s): %s"
-              % (process.returncode, stderr.decode("utf-8", "replace").strip()))
+              % (process.returncode, err))
         return ""
 
     return stdout.decode("utf-8", "replace")
