@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""JSON report building and output."""
+"""JSON report building and output for NetProbe."""
 import json
 
 from utils import is_vulnerable_service
 
 
-def _normalize_result(r: dict) -> dict:
+def _normalize_result(r):
     """Coerce a scan result dict into the canonical report shape."""
     service = r.get("service", "Unknown")
     version = r.get("version", "")
@@ -15,7 +15,7 @@ def _normalize_result(r: dict) -> dict:
         vulnerable = bool(r["vulnerable"])
     else:
         vulnerable = is_vulnerable_service(
-            f"{service} {version} {server_header}".strip()
+            ("%s %s %s" % (service, version, server_header)).strip()
         )
 
     return {
@@ -32,12 +32,11 @@ class ScanReport(list):
     """A list of result dicts that also carries report header metadata.
 
     Iterating / indexing it yields port result dicts (legacy list view).
-    Accessing .target / .hostname / .results / .to_dict() yields the
-    structured header view used by the refactored reporter.
+    String keys and attribute access yield the structured header view.
     """
 
-    def __init__(self, target, hostname, source_ip,
-                 start_port, end_port, results):
+    def __init__(self, target, hostname, source_ip, start_port, end_port,
+                 results):
         normalized = [_normalize_result(r) for r in results]
         super().__init__(normalized)
         self.target = target
@@ -47,7 +46,7 @@ class ScanReport(list):
         self.end_port = end_port
         self.results = normalized
 
-    def to_dict(self) -> dict:
+    def _dict(self):
         return {
             "target": self.target,
             "hostname": self.hostname,
@@ -59,13 +58,23 @@ class ScanReport(list):
             "results": self.results,
         }
 
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self._dict()[key]
+        return list.__getitem__(self, key)
 
-def build_report(target: str,
-                 hostname: str,
-                 source_ip: str,
-                 start_port: int,
-                 end_port: int,
-                 results: list) -> ScanReport:
+    def get(self, key, default=None):
+        return self._dict().get(key, default)
+
+    def keys(self):
+        return self._dict().keys()
+
+    def to_dict(self):
+        return self._dict()
+
+
+def build_report(target, hostname, source_ip, start_port, end_port,
+                 results):
     """Assemble the final report object from scan results."""
     return ScanReport(
         target=target,
@@ -77,13 +86,9 @@ def build_report(target: str,
     )
 
 
-def write_report(report, path: str) -> None:
-    """Write the report to a JSON file.
-
-    Accepts either a ScanReport or a plain dict; always serializes the
-    structured header + flat 'results' list.
-    """
+def write_report(report, path):
+    """Write the report to a JSON file."""
     data = report.to_dict() if hasattr(report, "to_dict") else report
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
-    print(f"[*] Report written to {path}")
+    print("[*] Report written to %s" % path)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Socket-level scanning logic: connect checks, banners, HTTP probing."""
+"""Socket-level scanning logic for NetProbe."""
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -12,7 +12,7 @@ from utils import (
 )
 
 
-def make_socket(source_ip: str = None) -> socket.socket:
+def make_socket(source_ip=None):
     """Create a TCP socket, optionally bound to a local source IP."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if source_ip:
@@ -20,7 +20,7 @@ def make_socket(source_ip: str = None) -> socket.socket:
     return sock
 
 
-def resolve_hostname(ip: str) -> str:
+def resolve_hostname(ip):
     """Resolve an IP to its PTR hostname via reverse DNS.
 
     Returns the hostname on success, or 'unknown' on failure.
@@ -32,12 +32,12 @@ def resolve_hostname(ip: str) -> str:
         return "unknown"
 
 
-def check_port(ip: str, port: int, source_ip: str = None) -> bool:
+def check_port(ip, port, source_ip=None):
     """Check if a TCP port on the given IP is open."""
     try:
         sock = make_socket(source_ip)
     except OSError as exc:
-        print(f"[!] Cannot bind to {source_ip}: {exc}")
+        print("[!] Cannot bind to %s: %s" % (source_ip, exc))
         return False
     sock.settimeout(1.0)
     try:
@@ -49,20 +49,20 @@ def check_port(ip: str, port: int, source_ip: str = None) -> bool:
         sock.close()
 
 
-def ping_sweep(subnet: str, source_ip: str = None) -> list:
+def ping_sweep(subnet, source_ip=None):
     """Scan port 80 on every host in a /24 subnet."""
     base = subnet.split("/")[0]
     prefix = ".".join(base.split(".")[:3])
 
     live = []
     for host in range(1, 255):
-        ip = f"{prefix}.{host}"
+        ip = "%s.%d" % (prefix, host)
         if check_port(ip, 80, source_ip):
             live.append(ip)
     return live
 
 
-def parse_server_header(response: str) -> str:
+def parse_server_header(response):
     """Extract the value of the 'Server' header from a raw HTTP response.
 
     Returns '' if no Server header is present.
@@ -76,7 +76,7 @@ def parse_server_header(response: str) -> str:
     return ""
 
 
-def _recv_response(sock: socket.socket, cap: int = 65536) -> str:
+def _recv_response(sock, cap=65536):
     """Read up to `cap` bytes from the socket and decode as text."""
     chunks = []
     total = 0
@@ -92,14 +92,11 @@ def _recv_response(sock: socket.socket, cap: int = 65536) -> str:
     return b"".join(chunks).decode("utf-8", errors="replace")
 
 
-def get_banner(ip: str, port: int, source_ip: str = None) -> str:
+def get_banner(ip, port, source_ip=None):
     """Grab a service banner from an open TCP port.
 
-    For HTTP ports (80/8080/8000/8888):
-      - sends a real 'GET / HTTP/1.1\\r\\nHost: <ip>\\r\\n\\r\\n'
-      - parses the response for the 'Server' header
-      - returns the Server header value, or 'Unknown' if absent
-
+    For HTTP ports: sends 'GET / HTTP/1.1\\r\\nHost: <ip>\\r\\n\\r\\n'
+    and returns the parsed 'Server' header, or 'Unknown' if absent.
     For other ports: sends a generic HEAD probe and returns the raw
     response. Returns 'Unknown' on any failure.
     """
@@ -113,7 +110,7 @@ def get_banner(ip: str, port: int, source_ip: str = None) -> str:
         sock.connect((ip, port))
 
         if port in HTTP_PORTS:
-            request = f"GET / HTTP/1.1\r\nHost: {ip}\r\n\r\n"
+            request = "GET / HTTP/1.1\r\nHost: %s\r\n\r\n" % ip
         else:
             request = "HEAD / HTTP/1.0\r\n\r\n"
 
@@ -137,7 +134,7 @@ def get_banner(ip: str, port: int, source_ip: str = None) -> str:
         sock.close()
 
 
-def http_probe(ip: str, port: int, source_ip: str = None) -> dict:
+def http_probe(ip, port, source_ip=None):
     """Send GET / HTTP/1.1 and extract the Server header."""
     result = {"server_header": "", "raw": ""}
 
@@ -148,7 +145,7 @@ def http_probe(ip: str, port: int, source_ip: str = None) -> dict:
 
     try:
         sock.connect((ip, port))
-        request = f"GET / HTTP/1.1\r\nHost: {ip}\r\n\r\n"
+        request = "GET / HTTP/1.1\r\nHost: %s\r\n\r\n" % ip
         sock.sendall(request.encode("ascii"))
 
         raw = _recv_response(sock)
@@ -166,7 +163,7 @@ probe_http = http_probe
 get_http_headers = http_probe
 
 
-def get_service_info(ip: str, port: int, source_ip: str = None) -> str:
+def get_service_info(ip, port, source_ip=None):
     """Return a best-effort service name for an open port."""
     banner = get_banner(ip, port, source_ip)
 
@@ -174,14 +171,17 @@ def get_service_info(ip: str, port: int, source_ip: str = None) -> str:
         service = banner
     else:
         guess = guess_service(port)
-        service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
+        if guess != "Unknown":
+            service = "%s (Guessed)" % guess
+        else:
+            service = "Unknown"
 
     if is_vulnerable_service(banner if banner != "Unknown" else ""):
-        return f"{service} [VULNERABLE]"
+        return "%s [VULNERABLE]" % service
     return service
 
 
-def inspect_service(ip: str, port: int, source_ip: str = None) -> dict:
+def inspect_service(ip, port, source_ip=None):
     """Identify a service. HTTP ports get a GET + Server header parse."""
     service = "Unknown"
     version = ""
@@ -199,10 +199,13 @@ def inspect_service(ip: str, port: int, source_ip: str = None) -> dict:
             service = banner.splitlines()[0]
         else:
             guess = guess_service(port)
-            service = f"{guess} (Guessed)" if guess != "Unknown" else "Unknown"
+            if guess != "Unknown":
+                service = "%s (Guessed)" % guess
+            else:
+                service = "Unknown"
 
     vulnerable = is_vulnerable_service(
-        f"{service} {version} {server_header}".strip()
+        ("%s %s %s" % (service, version, server_header)).strip()
     )
     return {
         "port": port,
@@ -213,8 +216,7 @@ def inspect_service(ip: str, port: int, source_ip: str = None) -> dict:
     }
 
 
-def _probe_port(ip: str, port: int, delay: float = 0.0,
-                source_ip: str = None):
+def _probe_port(ip, port, delay=0.0, source_ip=None):
     """Worker: check a single port and return a result dict, or None."""
     if delay > 0:
         sleep_delay(delay)
@@ -225,23 +227,18 @@ def _probe_port(ip: str, port: int, delay: float = 0.0,
     return inspect_service(ip, port, source_ip)
 
 
-def format_result(result: dict) -> str:
+def format_result(result):
     """Format a single scan result for console output."""
     service = result.get("service", "Unknown")
     version = result.get("version", "")
-    label = f"{service} ({version})" if version else service
+    label = "%s (%s)" % (service, version) if version else service
     if result.get("vulnerable"):
         label += " [VULNERABLE]"
-    return f"[+] Port {result['port']}: {label}"
+    return "[+] Port %s: %s" % (result["port"], label)
 
 
-def scan_ports(ip: str,
-               start_port: int,
-               end_port: int,
-               max_workers: int = 50,
-               delay: float = 0.0,
-               randomize: bool = False,
-               source_ip: str = None) -> list:
+def scan_ports(ip, start_port, end_port, max_workers=50, delay=0.0,
+               randomize=False, source_ip=None):
     """Scan a range of TCP ports on a single host, concurrently."""
     ports = list(range(start_port, end_port + 1))
 
@@ -249,7 +246,7 @@ def scan_ports(ip: str,
         shuffle_ports(ports)
         print("Scanning ports randomly...")
     else:
-        print(f"Scanning {ip} from {start_port} to {end_port}...")
+        print("Scanning %s from %s to %s..." % (ip, start_port, end_port))
 
     results = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -263,7 +260,7 @@ def scan_ports(ip: str,
             try:
                 result = future.result()
             except Exception as exc:
-                print(f"[!] Port {port} probe failed: {exc}")
+                print("[!] Port %s probe failed: %s" % (port, exc))
                 continue
             if result is None:
                 continue
@@ -275,8 +272,8 @@ def scan_ports(ip: str,
     return results
 
 
-def scan_udp(ip: str, port: int, source_ip: str = None) -> bool:
-    """Scan a single UDP port (no handshake; open|filtered on timeout)."""
+def scan_udp(ip, port, source_ip=None):
+    """Scan a single UDP port (open|filtered on timeout)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     if source_ip:
         try:
