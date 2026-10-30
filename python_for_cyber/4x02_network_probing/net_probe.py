@@ -9,7 +9,7 @@ from utils import is_local_ip, parse_port_range
 
 
 def main(argv=None):
-    """Run a scan and return the report object."""
+    """Run a scan and return the report list."""
     args = parse_args(argv)
     start_port, end_port = parse_port_range(args.ports)
 
@@ -34,14 +34,7 @@ def main(argv=None):
         source_ip=source_ip,
     )
 
-    report = build_report(
-        target=args.target,
-        hostname=hostname,
-        source_ip=source_ip,
-        start_port=start_port,
-        end_port=end_port,
-        results=results,
-    )
+    report = build_report(results)
 
     if args.output:
         write_report(report, args.output)

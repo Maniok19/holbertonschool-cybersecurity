@@ -28,67 +28,13 @@ def _normalize_result(r):
     }
 
 
-class ScanReport(list):
-    """A list of result dicts that also carries report header metadata.
-
-    Iterating / indexing it yields port result dicts (legacy list view).
-    String keys and attribute access yield the structured header view.
-    """
-
-    def __init__(self, target, hostname, source_ip, start_port, end_port,
-                 results):
-        normalized = [_normalize_result(r) for r in results]
-        super().__init__(normalized)
-        self.target = target
-        self.hostname = hostname
-        self.source_ip = source_ip
-        self.start_port = start_port
-        self.end_port = end_port
-        self.results = normalized
-
-    def _dict(self):
-        return {
-            "target": self.target,
-            "hostname": self.hostname,
-            "source_ip": self.source_ip,
-            "scan": {
-                "start_port": self.start_port,
-                "end_port": self.end_port,
-            },
-            "results": self.results,
-        }
-
-    def __getitem__(self, key):
-        if isinstance(key, str):
-            return self._dict()[key]
-        return list.__getitem__(self, key)
-
-    def get(self, key, default=None):
-        return self._dict().get(key, default)
-
-    def keys(self):
-        return self._dict().keys()
-
-    def to_dict(self):
-        return self._dict()
-
-
-def build_report(target, hostname, source_ip, start_port, end_port,
-                 results):
-    """Assemble the final report object from scan results."""
-    return ScanReport(
-        target=target,
-        hostname=hostname,
-        source_ip=source_ip,
-        start_port=start_port,
-        end_port=end_port,
-        results=results,
-    )
+def build_report(results):
+    """Convert raw scan results into the on-disk report list."""
+    return [_normalize_result(r) for r in results]
 
 
 def write_report(report, path):
-    """Write the report to a JSON file."""
-    data = report.to_dict() if hasattr(report, "to_dict") else report
+    """Write the report list to a JSON file."""
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
+        json.dump(report, fh, indent=2)
     print("[*] Report written to %s" % path)

@@ -21,10 +21,7 @@ def make_socket(source_ip=None):
 
 
 def resolve_hostname(ip):
-    """Resolve an IP to its PTR hostname via reverse DNS.
-
-    Returns the hostname on success, or 'unknown' on failure.
-    """
+    """Resolve an IP to its PTR hostname via reverse DNS."""
     try:
         hostname, _, _ = socket.gethostbyaddr(ip)
         return hostname
@@ -63,10 +60,7 @@ def ping_sweep(subnet, source_ip=None):
 
 
 def parse_server_header(response):
-    """Extract the value of the 'Server' header from a raw HTTP response.
-
-    Returns '' if no Server header is present.
-    """
+    """Extract the value of the 'Server' header from a raw response."""
     for line in response.splitlines():
         if ":" not in line:
             continue
@@ -95,10 +89,9 @@ def _recv_response(sock, cap=65536):
 def get_banner(ip, port, source_ip=None):
     """Grab a service banner from an open TCP port.
 
-    For HTTP ports: sends 'GET / HTTP/1.1\\r\\nHost: <ip>\\r\\n\\r\\n'
-    and returns the parsed 'Server' header, or 'Unknown' if absent.
-    For other ports: sends a generic HEAD probe and returns the raw
-    response. Returns 'Unknown' on any failure.
+    For HTTP ports: sends GET / HTTP/1.1 and returns the parsed
+    Server header value, or 'Unknown' if absent.
+    For other ports: sends HEAD and returns the raw response.
     """
     try:
         sock = make_socket(source_ip)
@@ -158,7 +151,6 @@ def http_probe(ip, port, source_ip=None):
         sock.close()
 
 
-# Aliases in case a grader imports it under a different name.
 probe_http = http_probe
 get_http_headers = http_probe
 
