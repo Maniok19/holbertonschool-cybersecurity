@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""IntelBroker: query mock APIs and run live nmap scans."""
+"""IntelBroker: build a target dossier from mock APIs and nmap."""
+import argparse
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 
 import requests
@@ -9,12 +11,32 @@ import requests
 BASE_URL = "http://localhost:5000"
 
 
-def _get_json(endpoint):
-    """GET an endpoint from the mock API and return parsed JSON.
+class TargetDossier:
+    """Holds aggregated intelligence about a single target IP."""
 
-    Returns the parsed dict on success, or an empty dict on
-    connection failure, non-200 status, or invalid JSON.
-    """
+    def __init__(self, ip):
+        self.ip = ip
+        self.vt_data = {}
+        self.abuse_data = {}
+        self.nmap_ports = []
+
+    def __str__(self):
+        vt_score = self.vt_data.get("reputation_score", "n/a")
+        vt_mal = self.vt_data.get("malicious", "n/a")
+        abuse_score = self.abuse_data.get("abuse_confidence_score", "n/a")
+        abuse_reports = self.abuse_data.get("reports", "n/a")
+        ports = self.nmap_ports if self.nmap_ports else "none"
+        return (
+            "=== Dossier for %s ===\n"
+            "VirusTotal: reputation=%s malicious=%s\n"
+            "AbuseIPDB:  confidence=%s reports=%s\n"
+            "Nmap:       open ports=%s"
+            % (self.ip, vt_score, vt_mal, abuse_score, abuse_reports, ports)
+        )
+
+
+def _get_json(endpoint):
+    """GET an endpoint from the mock API and return parsed JSON."""
     url = "%s/%s" % (BASE_URL, endpoint)
     try:
         response = requests.get(url, timeout=5)
@@ -44,10 +66,7 @@ def query_abuseipdb(ip):
 
 
 def run_nmap(ip):
-    """Run 'nmap -p 22,80 <IP> -oX -' and return the raw XML stdout.
-
-    Raises RuntimeError if nmap exits non-zero.
-    """
+    """Run 'nmap -p 22,80 <IP> -oX -' and return the raw XML stdout."""
     command = ["nmap", "-p", "22,80", ip, "-oX", "-"]
     result = subprocess.run(
         command,
@@ -87,8 +106,32 @@ def parse_nmap_xml(xml_data):
     return open_ports
 
 
+def build_dossier(ip):
+    """Populate and return a TargetDossier for the given IP."""
+    dossier = TargetDossier(ip)
+    dossier.vt_data = query_virustotal(ip)
+    dossier.abuse_data = query_abuseipdb(ip)
+    try:
+        xml = run_nmap(ip)
+    except RuntimeError as exc:
+        print("[!] %s" % exc)
+        xml = ""
+    dossier.nmap_ports = parse_nmap_xml(xml)
+    return dossier
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="intel_broker",
+        description="Aggregate intel about an IP from mock APIs and nmap.",
+    )
+    parser.add_argument("ip", help="Target IPv4 address")
+    args = parser.parse_args(argv)
+
+    dossier = build_dossier(args.ip)
+    print(dossier)
+    return dossier
+
+
 if __name__ == "__main__":
-    print(query_virustotal("1.2.3.4"))
-    print(query_abuseipdb("1.2.3.4"))
-    xml = run_nmap("127.0.0.1")
-    print(parse_nmap_xml(xml))
+    main()
