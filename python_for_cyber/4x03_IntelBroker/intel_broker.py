@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """IntelBroker: build a target dossier from mock APIs and nmap."""
 import argparse
+import asyncio
 import subprocess
 import xml.etree.ElementTree as ET
 
@@ -32,8 +33,35 @@ class TargetDossier:
         )
 
 
+async def fetch_api(session, url):
+    """Async GET a mock-API URL and return parsed JSON.
+
+    Returns the parsed dict on success, or an empty dict on
+    connection failure, non-200 status, or invalid JSON.
+    """
+    import aiohttp
+
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(
+                total=5)) as response:
+            if response.status != 200:
+                print("[!] Unexpected status: %s" % response.status)
+                return {}
+            try:
+                return await response.json()
+            except (aiohttp.ContentTypeError, ValueError) as exc:
+                print("[!] Invalid JSON in response: %s" % exc)
+                return {}
+    except aiohttp.ClientConnectionError as exc:
+        print("[!] Connection error: %s" % exc)
+        return {}
+    except asyncio.TimeoutError as exc:
+        print("[!] Timeout: %s" % exc)
+        return {}
+
+
 def _get_json(endpoint):
-    """GET an endpoint from the mock API and return parsed JSON."""
+    """Sync GET an endpoint from the mock API and return parsed JSON."""
     import requests
 
     url = "%s/%s" % (BASE_URL, endpoint)
