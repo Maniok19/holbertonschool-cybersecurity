@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-# 3-containment.sh
-# Automates network isolation and process freezing for Incident Response.
-# Usage: sudo ./3-containment.sh <ATTACKER_IP> <PID>
-
 set -euo pipefail
 
 # Check for root privileges
