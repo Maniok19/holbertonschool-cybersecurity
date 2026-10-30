@@ -2,6 +2,8 @@
 """IntelBroker: build a target dossier from mock APIs and nmap."""
 import argparse
 import asyncio
+import datetime
+import json
 import subprocess
 import xml.etree.ElementTree as ET
 
@@ -35,6 +37,21 @@ class TargetDossier:
             % (self.ip, vt_score, vt_mal, abuse_score, abuse_reports,
                shodan_ports, ports)
         )
+
+    def to_dict(self):
+        """Return the dossier as a JSON-serializable dict."""
+        return {
+            "target": self.ip,
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "intelligence": {
+                "virustotal": self.vt_data,
+                "shodan": self.shodan_data,
+                "abuseipdb": self.abuse_data,
+                "nmap": {
+                    "open_ports": self.nmap_ports,
+                },
+            },
+        }
 
 
 async def fetch_api(session, url):
@@ -184,7 +201,7 @@ def parse_nmap_xml(xml_data):
 
 
 def build_dossier(ip):
-    """Populate and return a TargetDossier for the given IP."""
+    """Populate and return a TargetDossier for the given IP (sync)."""
     dossier = TargetDossier(ip)
     dossier.vt_data = query_virustotal(ip)
     dossier.abuse_data = query_abuseipdb(ip)
@@ -197,16 +214,52 @@ def build_dossier(ip):
     return dossier
 
 
+async def build_dossier_async(ip):
+    """Populate and return a TargetDossier for the given IP (async).
+
+    Runs the three API queries and nmap concurrently, then assembles
+    the dossier.
+    """
+    intel_task = gather_intel(ip)
+    nmap_task = run_nmap_async(ip)
+
+    (vt_data, shodan_data, abuse_data), nmap_xml = await asyncio.gather(
+        intel_task, nmap_task
+    )
+
+    dossier = TargetDossier(ip)
+    dossier.vt_data = vt_data
+    dossier.shodan_data = shodan_data
+    dossier.abuse_data = abuse_data
+    dossier.nmap_ports = parse_nmap_xml(nmap_xml)
+    return dossier
+
+
+def write_report(dossier, path):
+    """Serialize a TargetDossier to a JSON file."""
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(dossier.to_dict(), fh, indent=2)
+    print("[*] Report written to %s" % path)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="intel_broker",
         description="Aggregate intel about an IP from mock APIs and nmap.",
     )
     parser.add_argument("ip", help="Target IPv4 address")
+    parser.add_argument(
+        "-o", "--output",
+        help="Write the dossier to this JSON file (optional)",
+    )
     args = parser.parse_args(argv)
 
-    dossier = build_dossier(args.ip)
+    dossier = asyncio.run(build_dossier_async(args.ip))
     print(dossier)
+
+    if args.output:
+        write_report(dossier, args.output)
+
     return dossier
 
 
