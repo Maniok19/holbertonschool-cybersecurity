@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 BASE_URL = "http://localhost:5000"
 CACHE_FILE = "cache.json"
 CACHE_TTL = 3600  # 1 hour, in seconds
+MAX_CONCURRENCY = 5
 
 
 class TargetDossier:
@@ -97,10 +98,22 @@ def _cache_put(ip, data):
     _save_cache(cache)
 
 
-async def fetch_api(session, url):
-    """Async GET a mock-API URL and return parsed JSON."""
+async def fetch_api(session, url, semaphore=None):
+    """Async GET a mock-API URL and return parsed JSON.
+
+    When `semaphore` is provided, the request holds it for the
+    duration of the HTTP exchange to cap concurrency.
+    """
     import aiohttp
 
+    if semaphore is not None:
+        async with semaphore:
+            return await _fetch_api_inner(session, url, aiohttp)
+    return await _fetch_api_inner(session, url, aiohttp)
+
+
+async def _fetch_api_inner(session, url, aiohttp):
+    """Do the actual HTTP GET; factored out to keep fetch_api clean."""
     try:
         async with session.get(
             url, timeout=aiohttp.ClientTimeout(total=5)
@@ -121,17 +134,14 @@ async def fetch_api(session, url):
         return {}
 
 
-async def _fetch_or_cache(session, ip, source):
-    """Fetch one API source for `ip`, using the cache when fresh.
-
-    `source` is one of 'virustotal', 'shodan', 'abuseipdb'.
-    """
+async def _fetch_or_cache(session, ip, source, semaphore):
+    """Fetch one API source for `ip`, using the cache when fresh."""
     cached = _cache_get(ip)
     if cached is not None:
         return cached.get(source, {})
 
     url = "%s/%s/%s" % (BASE_URL, source, ip)
-    data = await fetch_api(session, url)
+    data = await fetch_api(session, url, semaphore)
     if data:
         _cache_put(ip, _merge_cache(ip, source, data))
     return data
@@ -148,7 +158,9 @@ async def gather_intel(ip):
     """Query VirusTotal, Shodan, and AbuseIPDB in parallel.
 
     Uses the on-disk cache when an entry for `ip` is under 1 hour old.
-    Falls back to sync requests if aiohttp is unavailable.
+    Caps concurrent in-flight requests at MAX_CONCURRENCY via a
+    shared asyncio.Semaphore. Falls back to sync requests if aiohttp
+    is unavailable.
     """
     cached = _cache_get(ip)
     if cached is not None:
@@ -171,11 +183,13 @@ async def gather_intel(ip):
             _cache_put(ip, bundle)
         return vt, sh, ab
 
+    semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
+
     async with aiohttp.ClientSession() as session:
         vt_data, shodan_data, abuse_data = await asyncio.gather(
-            _fetch_or_cache(session, ip, "virustotal"),
-            _fetch_or_cache(session, ip, "shodan"),
-            _fetch_or_cache(session, ip, "abuseipdb"),
+            _fetch_or_cache(session, ip, "virustotal", semaphore),
+            _fetch_or_cache(session, ip, "shodan", semaphore),
+            _fetch_or_cache(session, ip, "abuseipdb", semaphore),
         )
 
     return vt_data, shodan_data, abuse_data
