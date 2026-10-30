@@ -11,7 +11,7 @@ BASE_URL = "http://localhost:5000"
 class TargetDossier:
     """Holds aggregated intelligence about a single target IP."""
 
-    def __init__(self, ip):
+    def __init__(self, ip=None):
         self.ip = ip
         self.vt_data = {}
         self.abuse_data = {}
