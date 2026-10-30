@@ -2,10 +2,7 @@
 """IntelBroker: build a target dossier from mock APIs and nmap."""
 import argparse
 import subprocess
-import sys
 import xml.etree.ElementTree as ET
-
-import requests
 
 
 BASE_URL = "http://localhost:5000"
@@ -37,6 +34,8 @@ class TargetDossier:
 
 def _get_json(endpoint):
     """GET an endpoint from the mock API and return parsed JSON."""
+    import requests
+
     url = "%s/%s" % (BASE_URL, endpoint)
     try:
         response = requests.get(url, timeout=5)
