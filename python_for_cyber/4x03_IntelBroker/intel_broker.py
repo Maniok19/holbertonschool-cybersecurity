@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""IntelBroker: query a local mock VirusTotal/Shodan/AbuseIPDB API."""
+"""IntelBroker: query mock APIs and run live nmap scans."""
+import subprocess
+
 import requests
 
 
@@ -40,6 +42,28 @@ def query_abuseipdb(ip):
     return _get_json("abuseipdb/%s" % ip)
 
 
+def run_nmap(ip):
+    """Run 'nmap -p 22,80 <IP> -oX -' and return the raw XML stdout.
+
+    Raises RuntimeError if nmap exits non-zero.
+    """
+    command = ["nmap", "-p", "22,80", ip, "-oX", "-"]
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            "nmap failed (exit %s): %s"
+            % (result.returncode, result.stderr.strip())
+        )
+
+    return result.stdout
+
+
 if __name__ == "__main__":
     print(query_virustotal("1.2.3.4"))
     print(query_abuseipdb("1.2.3.4"))
+    print(run_nmap("127.0.0.1")[:200])
