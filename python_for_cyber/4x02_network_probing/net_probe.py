@@ -57,17 +57,23 @@ def main(argv=None):
         randomize=args.random,
     )
 
-    report = [
-        {
-            "port": r["port"],
-            "state": "open",
-            "service": r["service"],
-            "vulnerability": (
-                "YES" if is_vulnerable_service(r.get("service", "")) else "NO"
-            ),
-        }
-        for r in results
-    ]
+    report = {
+        "target": args.target,
+        "hostname": hostname,
+        "scan": {
+            "start_port": start_port,
+            "end_port": end_port,
+        },
+        "results": [
+            {
+                "port": r["port"],
+                "state": "open",
+                "service": r["service"],
+                "vulnerability": "YES" if r["vulnerable"] else "NO",
+            }
+            for r in results
+        ],
+    }
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as fh:
