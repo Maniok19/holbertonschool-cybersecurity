@@ -6,7 +6,6 @@ import sys
 import time
 
 
-# Common ports -> service name, used when a service is silent.
 COMMON_PORTS = {
     21: "FTP",
     22: "SSH",
@@ -25,10 +24,8 @@ COMMON_PORTS = {
     8080: "HTTP-Alt",
 }
 
-# Ports we treat as web services for deep HTTP inspection.
 HTTP_PORTS = {80, 8080, 8000, 8888}
 
-# Known-vulnerable signatures. Matching is case-insensitive substring.
 VULNERABLE_SIGNATURES = [
     "vsftpd 2.3.4",
     "apache 2.2.8",
