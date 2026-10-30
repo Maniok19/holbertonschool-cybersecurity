@@ -68,7 +68,7 @@ def parse_args(argv=None):
     parser.add_argument("-r", "--random", action="store_true",
                         help="Shuffle the port order before scanning")
     parser.add_argument("-i", "--interface", metavar="LOCAL_IP",
-                        help="Bind outbound sockets to this local interface IP")
+                        help="Bind outbound sockets to this local interface")
     return parser.parse_args(argv)
 
 
