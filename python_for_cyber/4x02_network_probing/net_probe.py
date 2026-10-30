@@ -49,17 +49,27 @@ def main(argv=None):
     hostname = resolve_hostname(args.target)
     print(f"Target: {args.target} ({hostname})")
 
+    source_ip = args.interface
+    if source_ip:
+        if not is_local_ip(source_ip):
+            sys.exit(
+                f"error: {source_ip!r} is not a local interface address"
+            )
+        print(f"[INFO] Scanning from source IP: {source_ip}")
+
     results = scan_ports(
         args.target,
         start_port,
         end_port,
         delay=args.delay,
         randomize=args.random,
+        source_ip=source_ip,
     )
 
     report = {
         "target": args.target,
         "hostname": hostname,
+        "source_ip": source_ip,
         "scan": {
             "start_port": start_port,
             "end_port": end_port,
@@ -114,6 +124,12 @@ def parse_args(argv=None):
         action="store_true",
         help="Shuffle the port order before scanning (evade firewalls)",
     )
+    parser.add_argument(
+        "-i", "--interface",
+        metavar="LOCAL_IP",
+        help="Bind outbound sockets to this local interface IP "
+             "(e.g. 192.168.1.50)",
+    )
     return parser.parse_args(argv)
 
 
@@ -144,9 +160,37 @@ def resolve_hostname(ip: str) -> str:
         return "unknown"
 
 
-def check_port(ip: str, port: int) -> bool:
-    """Check if a TCP port on the given IP is open."""
+def is_local_ip(ip: str) -> bool:
+    """Return True if `ip` is an address assigned to a local interface.
+
+    Binds a throwaway socket to (ip, 0); if that fails the address is
+    not local (or not usable as a source).
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((ip, 0))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def make_socket(source_ip: str = None) -> socket.socket:
+    """Create a TCP socket, optionally bound to a local source IP."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if source_ip:
+        sock.bind((source_ip, 0))
+    return sock
+
+
+def check_port(ip: str, port: int, source_ip: str = None) -> bool:
+    """Check if a TCP port on the given IP is open."""
+    try:
+        sock = make_socket(source_ip)
+    except OSError as exc:
+        print(f"[!] Cannot bind to {source_ip}: {exc}")
+        return False
     sock.settimeout(1.0)
     try:
         sock.connect((ip, port))
@@ -157,7 +201,7 @@ def check_port(ip: str, port: int) -> bool:
         sock.close()
 
 
-def ping_sweep(subnet: str) -> list:
+def ping_sweep(subnet: str, source_ip: str = None) -> list:
     """Scan port 80 on every host in a /24 subnet."""
     base = subnet.split("/")[0]
     prefix = ".".join(base.split(".")[:3])
@@ -165,14 +209,17 @@ def ping_sweep(subnet: str) -> list:
     live = []
     for host in range(1, 255):
         ip = f"{prefix}.{host}"
-        if check_port(ip, 80):
+        if check_port(ip, 80, source_ip):
             live.append(ip)
     return live
 
 
-def get_banner(ip: str, port: int) -> str:
+def get_banner(ip: str, port: int, source_ip: str = None) -> str:
     """Grab a service banner from an open TCP port."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock = make_socket(source_ip)
+    except OSError:
+        return "Unknown"
     sock.settimeout(2.0)
     try:
         sock.connect((ip, port))
@@ -216,9 +263,9 @@ def is_vulnerable_service(service: str) -> bool:
     return any(sig in lowered for sig in VULNERABLE_SIGNATURES)
 
 
-def get_service_info(ip: str, port: int) -> str:
+def get_service_info(ip: str, port: int, source_ip: str = None) -> str:
     """Return a best-effort service name for an open port."""
-    banner = get_banner(ip, port)
+    banner = get_banner(ip, port, source_ip)
 
     if banner and banner != "Unknown":
         service = banner.splitlines()[0]
@@ -231,16 +278,17 @@ def get_service_info(ip: str, port: int) -> str:
     return service
 
 
-def _probe_port(ip: str, port: int, delay: float = 0.0):
+def _probe_port(ip: str, port: int, delay: float = 0.0,
+                source_ip: str = None):
     """Worker: check a single port and return a result dict, or None."""
     if delay > 0:
         print(f"[DEBUG] Sleeping {delay}s before next packet...")
         time.sleep(delay)
 
-    if not check_port(ip, port):
+    if not check_port(ip, port, source_ip):
         return None
 
-    banner = get_banner(ip, port)
+    banner = get_banner(ip, port, source_ip)
 
     if banner and banner != "Unknown":
         service = banner.splitlines()[0]
@@ -263,7 +311,8 @@ def scan_ports(ip: str,
                end_port: int,
                max_workers: int = 50,
                delay: float = 0.0,
-               randomize: bool = False) -> list:
+               randomize: bool = False,
+               source_ip: str = None) -> list:
     """Scan a range of TCP ports on a single host, concurrently."""
     ports = list(range(start_port, end_port + 1))
 
@@ -277,7 +326,7 @@ def scan_ports(ip: str,
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_port = {
-            executor.submit(_probe_port, ip, port, delay): port
+            executor.submit(_probe_port, ip, port, delay, source_ip): port
             for port in ports
         }
 
@@ -314,9 +363,15 @@ def scan_ports(ip: str,
     return results
 
 
-def scan_udp(ip: str, port: int) -> bool:
+def scan_udp(ip: str, port: int, source_ip: str = None) -> bool:
     """Scan a single UDP port (no handshake; open|filtered on timeout)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    if source_ip:
+        try:
+            sock.bind((source_ip, 0))
+        except OSError:
+            sock.close()
+            return False
     sock.settimeout(2.0)
     try:
         sock.sendto(b"", (ip, port))
