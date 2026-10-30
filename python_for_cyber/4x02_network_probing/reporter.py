@@ -5,41 +5,36 @@ import json
 from utils import is_vulnerable_service
 
 
+def _normalize_result(r: dict) -> dict:
+    """Coerce a scan result dict into the canonical report shape."""
+    service = r.get("service", "Unknown")
+    version = r.get("version", "")
+    server_header = r.get("server_header", "")
+
+    if "vulnerable" in r:
+        vulnerable = bool(r["vulnerable"])
+    else:
+        vulnerable = is_vulnerable_service(
+            f"{service} {version} {server_header}".strip()
+        )
+
+    return {
+        "port": r["port"],
+        "state": r.get("state", "open"),
+        "service": service,
+        "version": version,
+        "server_header": server_header,
+        "vulnerability": "YES" if vulnerable else "NO",
+    }
+
+
 def build_report(target: str,
                  hostname: str,
                  source_ip: str,
                  start_port: int,
                  end_port: int,
                  results: list) -> dict:
-    """Assemble the final report dict from scan results.
-
-    Each result is expected to be a dict with at least a 'port' key.
-    Missing optional keys ('service', 'version', 'server_header',
-    'vulnerable') are defaulted, and 'vulnerable' is derived from the
-    service/version strings when not supplied.
-    """
-    reported = []
-    for r in results:
-        service = r.get("service", "Unknown")
-        version = r.get("version", "")
-        server_header = r.get("server_header", "")
-
-        if "vulnerable" in r:
-            vulnerable = bool(r["vulnerable"])
-        else:
-            vulnerable = is_vulnerable_service(
-                f"{service} {version} {server_header}".strip()
-            )
-
-        reported.append({
-            "port": r["port"],
-            "state": r.get("state", "open"),
-            "service": service,
-            "version": version,
-            "server_header": server_header,
-            "vulnerability": "YES" if vulnerable else "NO",
-        })
-
+    """Assemble the final report dict from scan results."""
     return {
         "target": target,
         "hostname": hostname,
@@ -48,7 +43,7 @@ def build_report(target: str,
             "start_port": start_port,
             "end_port": end_port,
         },
-        "results": reported,
+        "results": [_normalize_result(r) for r in results],
     }
 
 
