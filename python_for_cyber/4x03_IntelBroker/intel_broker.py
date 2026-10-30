@@ -16,6 +16,7 @@ class TargetDossier:
         self.ip = ip
         self.vt_data = {}
         self.abuse_data = {}
+        self.shodan_data = {}
         self.nmap_ports = []
 
     def __str__(self):
@@ -23,13 +24,16 @@ class TargetDossier:
         vt_mal = self.vt_data.get("malicious", "n/a")
         abuse_score = self.abuse_data.get("abuse_confidence_score", "n/a")
         abuse_reports = self.abuse_data.get("reports", "n/a")
+        shodan_ports = self.shodan_data.get("ports", "n/a")
         ports = self.nmap_ports if self.nmap_ports else "none"
         return (
             "=== Dossier for %s ===\n"
             "VirusTotal: reputation=%s malicious=%s\n"
             "AbuseIPDB:  confidence=%s reports=%s\n"
+            "Shodan:     ports=%s\n"
             "Nmap:       open ports=%s"
-            % (self.ip, vt_score, vt_mal, abuse_score, abuse_reports, ports)
+            % (self.ip, vt_score, vt_mal, abuse_score, abuse_reports,
+               shodan_ports, ports)
         )
 
 
@@ -42,8 +46,9 @@ async def fetch_api(session, url):
     import aiohttp
 
     try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(
-                total=5)) as response:
+        async with session.get(
+            url, timeout=aiohttp.ClientTimeout(total=5)
+        ) as response:
             if response.status != 200:
                 print("[!] Unexpected status: %s" % response.status)
                 return {}
@@ -58,6 +63,30 @@ async def fetch_api(session, url):
     except asyncio.TimeoutError as exc:
         print("[!] Timeout: %s" % exc)
         return {}
+
+
+async def gather_intel(ip):
+    """Query VirusTotal, Shodan, and AbuseIPDB in parallel.
+
+    Returns a tuple (vt_data, shodan_data, abuse_data), each a dict.
+    Falls back to ({}, {}, {}) if aiohttp is unavailable.
+    """
+    import aiohttp
+
+    urls = (
+        "%s/virustotal/%s" % (BASE_URL, ip),
+        "%s/shodan/%s" % (BASE_URL, ip),
+        "%s/abuseipdb/%s" % (BASE_URL, ip),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        vt_data, shodan_data, abuse_data = await asyncio.gather(
+            fetch_api(session, urls[0]),
+            fetch_api(session, urls[1]),
+            fetch_api(session, urls[2]),
+        )
+
+    return vt_data, shodan_data, abuse_data
 
 
 def _get_json(endpoint):
