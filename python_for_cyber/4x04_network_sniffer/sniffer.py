@@ -9,7 +9,6 @@ def _get_scapy():
         import scapy
     except ImportError:
         return None
-    # Verify the submodule we need actually works before trusting it.
     try:
         from scapy.sendrecv import sniff  # noqa: F401
         return scapy
@@ -17,13 +16,12 @@ def _get_scapy():
         return None
 
 
-def packet_handler(packet):
+def packet_handler(packet, verbose=False):
     if packet is None:
         return
     try:
         from scapy.layers.inet import IP, TCP, UDP, ICMP
     except ImportError:
-        # Fall back to string layer names, which need no imports.
         IP, TCP, UDP, ICMP = "IP", "TCP", "UDP", "ICMP"
 
     try:
@@ -38,8 +36,11 @@ def packet_handler(packet):
                 print(f"[UDP] {src} -> {dst}")
             elif packet.haslayer(ICMP):
                 print(f"[ICMP] {src} -> {dst}")
+
+        if verbose:
+            from scapy.all import hexdump
+            hexdump(packet)
     except Exception:
-        # Never let the callback crash a stub-driven test.
         pass
 
 
@@ -53,6 +54,8 @@ def parse_args(argv=None):
                         help="BPF filter string (e.g., 'tcp port 80').")
     parser.add_argument("-w", "--write", default=None, metavar="FILE",
                         help="Write captured packets to a pcap file.")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Print a hexdump after each packet summary.")
     return parser.parse_args(argv)
 
 
@@ -76,7 +79,7 @@ def main(argv=None):
             print("[WARN] PcapWriter unavailable; not writing to file.")
 
     def handler(packet):
-        packet_handler(packet)
+        packet_handler(packet, verbose=args.verbose)
         if writer is not None:
             writer.write(packet)
 
