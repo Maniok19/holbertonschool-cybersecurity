@@ -378,13 +378,12 @@ class Sniffer:
         total = 0
 
         for protocol, count in self.stats.items():
-            print(f"{protocol}: {count}")
-
+            print(f"{protocol} packets: {count}")
             total += count
 
         print("---------------------------------------")
-        print(f"TOTAL: {total}")
-        print("=======================================")
+        print(f"TOTAL packets: {total}")
+        print("=======================================", flush=True)
 
     # ------------------------------------------------------------------
     # Hexdump
