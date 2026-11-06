@@ -19,36 +19,94 @@ def _get_scapy():
         return None
 
 
-def packet_handler(packet, verbose=False):
-    global hexdump
+class Sniffer:
+    """Capture packets on an interface, optionally writing them to a pcap."""
 
-    if packet is None:
-        return
+    def __init__(self, interface=None, filter_str=None,
+                 output_file=None, verbose=False):
+        self.interface = interface
+        self.filter_str = filter_str
+        self.output_file = output_file
+        self.verbose = verbose
+        self.writer = None
+        self._scapy = None
 
-    # --- summary line ---
-    try:
-        from scapy.layers.inet import IP, TCP, UDP, ICMP
-    except ImportError:
-        IP, TCP, UDP, ICMP = "IP", "TCP", "UDP", "ICMP"
+    # ------------------------------------------------------------------ setup
 
-    try:
-        if packet.haslayer(IP):
-            src = packet[IP].src
-            dst = packet[IP].dst
-            if packet.haslayer(TCP):
-                tcp = packet[TCP]
-                print(f"[TCP] {src}:{tcp.sport} -> {dst}:{tcp.dport} "
-                      f"| Flags: {tcp.flags}")
-            elif packet.haslayer(UDP):
-                print(f"[UDP] {src} -> {dst}")
-            elif packet.haslayer(ICMP):
-                print(f"[ICMP] {src} -> {dst}")
-    except Exception:
-        # Summary failure must not block hexdump.
-        pass
+    def _open_writer(self):
+        if not self.output_file:
+            return None
+        try:
+            from scapy.utils import PcapWriter
+        except ImportError:
+            print("[WARN] PcapWriter unavailable; not writing to file.")
+            return None
+        return PcapWriter(self.output_file, append=True, sync=True)
 
-    # --- verbose hexdump ---
-    if verbose:
+    # ---------------------------------------------------------------- lifecycle
+
+    def start(self):
+        self._scapy = _get_scapy()
+        if self._scapy is None:
+            print("[ERROR] Scapy is not available in this environment.")
+            return
+
+        sniff = self._scapy.sendrecv.sniff
+        self.writer = self._open_writer()
+
+        try:
+            sniff(
+                iface=self.interface,
+                filter=self.filter_str,
+                prn=self._process_packet,
+            )
+        except KeyboardInterrupt:
+            pass
+        finally:
+            if self.writer is not None:
+                self.writer.close()
+            print("\n[INFO] Stopping capture...", flush=True)
+
+    # --------------------------------------------------------------- callback
+
+    def _process_packet(self, packet):
+        if packet is None:
+            return
+
+        self._print_summary(packet)
+
+        if self.verbose:
+            self._print_hexdump(packet)
+
+        if self.writer is not None:
+            self.writer.write(packet)
+
+    # ----------------------------------------------------------------- helpers
+
+    def _print_summary(self, packet):
+        try:
+            from scapy.layers.inet import IP, TCP, UDP, ICMP
+        except ImportError:
+            IP, TCP, UDP, ICMP = "IP", "TCP", "UDP", "ICMP"
+
+        try:
+            if packet.haslayer(IP):
+                src = packet[IP].src
+                dst = packet[IP].dst
+                if packet.haslayer(TCP):
+                    tcp = packet[TCP]
+                    print(f"[TCP] {src}:{tcp.sport} -> {dst}:{tcp.dport} "
+                          f"| Flags: {tcp.flags}")
+                elif packet.haslayer(UDP):
+                    print(f"[UDP] {src} -> {dst}")
+                elif packet.haslayer(ICMP):
+                    print(f"[ICMP] {src} -> {dst}")
+        except Exception:
+            # Summary failure must not block hexdump or pcap writing.
+            pass
+
+    def _print_hexdump(self, packet):
+        global hexdump
         hd = hexdump
         if hd is None:
             try:
@@ -78,34 +136,13 @@ def main(argv=None):
     args = parse_args(argv)
     print("[INFO] PySniffer initialized.")
 
-    scapy = _get_scapy()
-    if scapy is None:
-        print("[ERROR] Scapy is not available in this environment.")
-        return
-
-    sniff = scapy.sendrecv.sniff
-
-    writer = None
-    if args.write:
-        try:
-            from scapy.utils import PcapWriter
-            writer = PcapWriter(args.write, append=True, sync=True)
-        except ImportError:
-            print("[WARN] PcapWriter unavailable; not writing to file.")
-
-    def handler(packet):
-        packet_handler(packet, verbose=args.verbose)
-        if writer is not None:
-            writer.write(packet)
-
-    try:
-        sniff(iface=args.interface, filter=args.filter, prn=handler)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        if writer is not None:
-            writer.close()
-        print("\n[INFO] Stopping capture...", flush=True)
+    sniffer = Sniffer(
+        interface=args.interface,
+        filter_str=args.filter,
+        output_file=args.write,
+        verbose=args.verbose,
+    )
+    sniffer.start()
 
 
 if __name__ == "__main__":
