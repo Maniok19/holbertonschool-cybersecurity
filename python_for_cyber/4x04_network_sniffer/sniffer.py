@@ -2,8 +2,6 @@
 
 import argparse
 
-from scapy.all import sniff
-
 
 def packet_handler(packet):
     try:
@@ -39,6 +37,8 @@ def parse_args():
 
 
 def main():
+    from scapy.all import sniff
+
     args = parse_args()
     print("[INFO] PySniffer initialized.")
 
