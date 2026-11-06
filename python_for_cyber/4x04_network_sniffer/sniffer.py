@@ -121,7 +121,7 @@ class TCPProcessor(PacketProcessor):
                     raw_layer = packet[Raw]
                     load = getattr(raw_layer, "load", None)
                     if load is None and isinstance(raw_layer,
-                                                  (bytes, bytearray)):
+                                                   (bytes, bytearray)):
                         load = bytes(raw_layer)
                     if isinstance(load, str):
                         raw_bytes = load.encode("utf-8", errors="ignore")
@@ -174,7 +174,7 @@ class UDPProcessor(PacketProcessor):
                     raw_layer = packet[Raw]
                     load = getattr(raw_layer, "load", None)
                     if load is None and isinstance(raw_layer,
-                                                  (bytes, bytearray)):
+                                                   (bytes, bytearray)):
                         load = bytes(raw_layer)
                     if isinstance(load, str):
                         raw_bytes = load.encode("utf-8", errors="ignore")
@@ -227,7 +227,7 @@ class ICMPProcessor(PacketProcessor):
                     raw_layer = packet[Raw]
                     load = getattr(raw_layer, "load", None)
                     if load is None and isinstance(raw_layer,
-                                                  (bytes, bytearray)):
+                                                   (bytes, bytearray)):
                         load = bytes(raw_layer)
                     if isinstance(load, str):
                         raw_bytes = load.encode("utf-8", errors="ignore")
