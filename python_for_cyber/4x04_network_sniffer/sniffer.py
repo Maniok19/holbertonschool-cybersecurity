@@ -57,10 +57,16 @@ class PacketProcessor:
     """Base class for protocol-specific packet processors."""
 
     protocol = "UNKNOWN"
+    layer_name = None
 
     def matches(self, packet):
         """Return True if this processor handles the given packet."""
-        return False
+        if self.layer_name is None:
+            return False
+        try:
+            return bool(packet.haslayer(self.layer_name))
+        except Exception:
+            return False
 
     def process(self, packet):
         """Format and print a one-line summary for the packet."""
@@ -69,35 +75,21 @@ class PacketProcessor:
     # Helpers used by subclasses ---------------------------------------
 
     def _ip_layer(self, packet):
-        try:
-            from scapy.layers.inet import IP
-        except Exception:
-            IP = "IP"
-        return packet[IP]
+        return packet["IP"]
 
-    def _has(self, packet, layer):
+    def _has(self, packet, layer_name):
         try:
-            return packet.haslayer(layer)
+            return bool(packet.haslayer(layer_name))
         except Exception:
             return False
 
 
 class TCPProcessor(PacketProcessor):
     protocol = "TCP"
-
-    def matches(self, packet):
-        try:
-            from scapy.layers.inet import TCP
-        except Exception:
-            TCP = "TCP"
-        return self._has(packet, TCP)
+    layer_name = "TCP"
 
     def process(self, packet):
-        try:
-            from scapy.layers.inet import TCP
-        except Exception:
-            TCP = "TCP"
-        tcp = packet[TCP]
+        tcp = packet["TCP"]
         ip = self._ip_layer(packet)
         print(f"[TCP] {ip.src}:{tcp.sport} -> {ip.dst}:{tcp.dport} "
               f"| Flags: {tcp.flags}")
@@ -105,13 +97,7 @@ class TCPProcessor(PacketProcessor):
 
 class UDPProcessor(PacketProcessor):
     protocol = "UDP"
-
-    def matches(self, packet):
-        try:
-            from scapy.layers.inet import UDP
-        except Exception:
-            UDP = "UDP"
-        return self._has(packet, UDP)
+    layer_name = "UDP"
 
     def process(self, packet):
         ip = self._ip_layer(packet)
@@ -120,20 +106,14 @@ class UDPProcessor(PacketProcessor):
 
 class ICMPProcessor(PacketProcessor):
     protocol = "ICMP"
-
-    def matches(self, packet):
-        try:
-            from scapy.layers.inet import ICMP
-        except Exception:
-            ICMP = "ICMP"
-        return self._has(packet, ICMP)
+    layer_name = "ICMP"
 
     def process(self, packet):
         ip = self._ip_layer(packet)
         print(f"[ICMP] {ip.src} -> {ip.dst}")
 
 
-# ------------------------------------------ sniffer
+# ------------------------------------------------------------------ sniffer
 
 
 class Sniffer:
@@ -146,7 +126,6 @@ class Sniffer:
         self.output_file = output_file
         self.verbose = verbose
         self.writer = None
-        # Order matters: check TCP/UDP/ICMP against the same IP layer.
         self.processors = [
             TCPProcessor(),
             UDPProcessor(),
@@ -201,12 +180,7 @@ class Sniffer:
     def _dispatch(self, packet):
         """Hand the packet to the first processor that matches."""
         try:
-            from scapy.layers.inet import IP
-        except Exception:
-            IP = "IP"
-
-        try:
-            if not packet.haslayer(IP):
+            if not packet.haslayer("IP"):
                 return
         except Exception:
             return
