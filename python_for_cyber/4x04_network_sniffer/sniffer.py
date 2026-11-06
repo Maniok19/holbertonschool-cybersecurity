@@ -3,6 +3,7 @@
 import argparse
 
 from scapy.all import sniff
+from scapy.utils import PcapWriter
 
 
 def packet_handler(packet):
@@ -39,17 +40,35 @@ def parse_args():
         default=None,
         help="BPF filter string (e.g., 'tcp port 80').",
     )
+    parser.add_argument(
+        "-w", "--write",
+        default=None,
+        metavar="FILE",
+        help="Write captured packets to a pcap file (e.g., out.pcap).",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     print("[INFO] PySniffer initialized.")
+
+    writer = None
+    if args.write:
+        writer = PcapWriter(args.write, append=True, sync=True)
+
+    def handler(packet):
+        packet_handler(packet)
+        if writer is not None:
+            writer.write(packet)
+
     try:
-        sniff(iface=args.interface, filter=args.filter, prn=packet_handler)
+        sniff(iface=args.interface, filter=args.filter, prn=handler)
     except KeyboardInterrupt:
         pass
     finally:
+        if writer is not None:
+            writer.close()
         print("\n[INFO] Stopping capture...", flush=True)
 
 
