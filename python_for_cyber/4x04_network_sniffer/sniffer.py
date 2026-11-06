@@ -48,8 +48,7 @@ def _find_sniff():
     return None
 
 
-def _get_raw_class():
-    """Return the Raw layer class, or the string 'Raw' as a fallback."""
+def _raw_layer_class():
     try:
         from scapy.all import Raw
         return Raw
@@ -94,56 +93,6 @@ class PacketProcessor:
     def process(self, packet):
         raise NotImplementedError
 
-    def _dpi(self, packet):
-        """Deep packet inspection helper, called from process()."""
-        search = self.search or _global_search
-        if not search:
-            return
-
-        Raw = _get_raw_class()
-        try:
-            has_raw = bool(packet.haslayer(Raw))
-        except Exception:
-            has_raw = False
-
-        raw_bytes = None
-        if has_raw:
-            try:
-                raw_layer = packet[Raw]
-                load = getattr(raw_layer, "load", None)
-                if load is None and isinstance(raw_layer, (bytes, bytearray)):
-                    load = bytes(raw_layer)
-                if load is not None:
-                    if isinstance(load, str):
-                        raw_bytes = load.encode("utf-8", errors="ignore")
-                    else:
-                        raw_bytes = bytes(load)
-            except Exception:
-                raw_bytes = None
-
-        # Fallback for stub packets where haslayer(Raw) lies.
-        if raw_bytes is None:
-            load = getattr(packet, "load", None)
-            if load is not None:
-                if isinstance(load, str):
-                    raw_bytes = load.encode("utf-8", errors="ignore")
-                else:
-                    try:
-                        raw_bytes = bytes(load)
-                    except Exception:
-                        raw_bytes = None
-
-        if raw_bytes is None:
-            return
-
-        try:
-            text = raw_bytes.decode("utf-8", errors="ignore")
-        except Exception:
-            return
-
-        if search in text:
-            print("[ALERT] Payload Match found!")
-
 
 class TCPProcessor(PacketProcessor):
     protocol = "TCP"
@@ -157,7 +106,47 @@ class TCPProcessor(PacketProcessor):
         dport = getattr(packet, "dport", "?")
         flags = getattr(packet, "flags", "?")
         print(f"[TCP] {src}:{sport} -> {dst}:{dport} | Flags: {flags}")
-        self._dpi(packet)
+
+        search = self.search or _global_search
+        if search:
+            Raw = _raw_layer_class()
+            has_raw = False
+            try:
+                has_raw = bool(packet.haslayer(Raw))
+            except Exception:
+                has_raw = False
+            if has_raw:
+                raw_bytes = None
+                try:
+                    raw_layer = packet[Raw]
+                    load = getattr(raw_layer, "load", None)
+                    if load is None and isinstance(raw_layer,
+                                                  (bytes, bytearray)):
+                        load = bytes(raw_layer)
+                    if isinstance(load, str):
+                        raw_bytes = load.encode("utf-8", errors="ignore")
+                    elif load is not None:
+                        raw_bytes = bytes(load)
+                except Exception:
+                    raw_bytes = None
+                if raw_bytes is None:
+                    load = getattr(packet, "load", None)
+                    if load is not None:
+                        if isinstance(load, str):
+                            raw_bytes = load.encode("utf-8",
+                                                    errors="ignore")
+                        else:
+                            try:
+                                raw_bytes = bytes(load)
+                            except Exception:
+                                raw_bytes = None
+                if raw_bytes is not None:
+                    try:
+                        text = raw_bytes.decode("utf-8", errors="ignore")
+                    except Exception:
+                        text = ""
+                    if search in text:
+                        print("[ALERT] Payload Match found!")
 
 
 class UDPProcessor(PacketProcessor):
@@ -170,7 +159,47 @@ class UDPProcessor(PacketProcessor):
         src = getattr(packet, "src", "?")
         dst = getattr(packet, "dst", "?")
         print(f"[UDP] {src} -> {dst}")
-        self._dpi(packet)
+
+        search = self.search or _global_search
+        if search:
+            Raw = _raw_layer_class()
+            has_raw = False
+            try:
+                has_raw = bool(packet.haslayer(Raw))
+            except Exception:
+                has_raw = False
+            if has_raw:
+                raw_bytes = None
+                try:
+                    raw_layer = packet[Raw]
+                    load = getattr(raw_layer, "load", None)
+                    if load is None and isinstance(raw_layer,
+                                                  (bytes, bytearray)):
+                        load = bytes(raw_layer)
+                    if isinstance(load, str):
+                        raw_bytes = load.encode("utf-8", errors="ignore")
+                    elif load is not None:
+                        raw_bytes = bytes(load)
+                except Exception:
+                    raw_bytes = None
+                if raw_bytes is None:
+                    load = getattr(packet, "load", None)
+                    if load is not None:
+                        if isinstance(load, str):
+                            raw_bytes = load.encode("utf-8",
+                                                    errors="ignore")
+                        else:
+                            try:
+                                raw_bytes = bytes(load)
+                            except Exception:
+                                raw_bytes = None
+                if raw_bytes is not None:
+                    try:
+                        text = raw_bytes.decode("utf-8", errors="ignore")
+                    except Exception:
+                        text = ""
+                    if search in text:
+                        print("[ALERT] Payload Match found!")
 
 
 class ICMPProcessor(PacketProcessor):
@@ -183,7 +212,47 @@ class ICMPProcessor(PacketProcessor):
         src = getattr(packet, "src", "?")
         dst = getattr(packet, "dst", "?")
         print(f"[ICMP] {src} -> {dst}")
-        self._dpi(packet)
+
+        search = self.search or _global_search
+        if search:
+            Raw = _raw_layer_class()
+            has_raw = False
+            try:
+                has_raw = bool(packet.haslayer(Raw))
+            except Exception:
+                has_raw = False
+            if has_raw:
+                raw_bytes = None
+                try:
+                    raw_layer = packet[Raw]
+                    load = getattr(raw_layer, "load", None)
+                    if load is None and isinstance(raw_layer,
+                                                  (bytes, bytearray)):
+                        load = bytes(raw_layer)
+                    if isinstance(load, str):
+                        raw_bytes = load.encode("utf-8", errors="ignore")
+                    elif load is not None:
+                        raw_bytes = bytes(load)
+                except Exception:
+                    raw_bytes = None
+                if raw_bytes is None:
+                    load = getattr(packet, "load", None)
+                    if load is not None:
+                        if isinstance(load, str):
+                            raw_bytes = load.encode("utf-8",
+                                                    errors="ignore")
+                        else:
+                            try:
+                                raw_bytes = bytes(load)
+                            except Exception:
+                                raw_bytes = None
+                if raw_bytes is not None:
+                    try:
+                        text = raw_bytes.decode("utf-8", errors="ignore")
+                    except Exception:
+                        text = ""
+                    if search in text:
+                        print("[ALERT] Payload Match found!")
 
 
 def packet_handler(packet, verbose=False, search=None):
