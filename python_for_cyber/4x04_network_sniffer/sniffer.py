@@ -267,23 +267,29 @@ class Sniffer:
             self.writer.write(packet)
 
     def _dispatch(self, packet):
+        # Search payload exactly once per packet, independently
+        # of protocol identification.
+        if self.search or _global_search:
+            searcher = PacketProcessor(search=self.search)
+            searcher._check_search(packet)
+
+        # Protocol identification and processing
         for processor in self.processors:
             try:
-                processor.search = self.search
-            except Exception:
-                pass
-            matcher = getattr(processor, "matches", None)
-            if callable(matcher):
-                try:
+                processor.search = None
+                matcher = getattr(processor, "matches", None)
+
+                if callable(matcher):
                     if not matcher(packet):
                         continue
-                except Exception:
-                    continue
-            try:
+
                 processor.process(packet)
+
+                return True
+
             except Exception:
-                pass
-            return True
+                continue
+
         return False
 
     def _print_hexdump(self, packet):
