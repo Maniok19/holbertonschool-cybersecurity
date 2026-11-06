@@ -82,7 +82,6 @@ class PacketProcessor:
         raise NotImplementedError
 
     def _raw_payload(self, packet):
-        """Return raw payload bytes from any plausible location."""
         candidates = []
 
         try:
@@ -238,6 +237,13 @@ class Sniffer:
     def _dispatch(self, packet):
         """Call the first matching processor exactly once."""
         for processor in self.processors:
+            # Keep processor.search in sync with the Sniffer's current value,
+            # so post-construction assignment on the Sniffer still works.
+            try:
+                processor.search = self.search
+            except Exception:
+                pass
+
             matcher = getattr(processor, "matches", None)
             if callable(matcher):
                 try:
