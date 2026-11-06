@@ -56,6 +56,9 @@ class PacketProcessor:
     requires = ()
     excludes = ()
 
+    def __init__(self, search=None):
+        self.search = search
+
     def matches(self, packet):
         if self.layer_name is not None:
             has = getattr(packet, "haslayer", None)
@@ -79,6 +82,48 @@ class PacketProcessor:
     def process(self, packet):
         raise NotImplementedError
 
+    # Helpers shared by subclasses -------------------------------------
+
+    def _raw_payload(self, packet):
+        """Return the Raw layer bytes if present, else None."""
+        has = getattr(packet, "haslayer", None)
+        if callable(has):
+            try:
+                if not has("Raw"):
+                    return None
+            except Exception:
+                return None
+        elif not hasattr(packet, "load"):
+            return None
+        try:
+            raw = packet["Raw"]
+        except Exception:
+            raw = None
+        if raw is None:
+            raw = getattr(packet, "load", None)
+        if raw is None:
+            return None
+        data = getattr(raw, "load", raw)
+        if isinstance(data, (bytes, bytearray)):
+            return bytes(data)
+        if isinstance(data, str):
+            return data.encode("utf-8", errors="replace")
+        return None
+
+    def _search_payload(self, packet):
+        """Print an alert if the configured search string is in the payload."""
+        if not self.search:
+            return
+        payload = self._raw_payload(packet)
+        if payload is None:
+            return
+        try:
+            text = payload.decode("utf-8", errors="replace")
+        except Exception:
+            return
+        if self.search in text:
+            print("[ALERT] Payload Match found!")
+
 
 class TCPProcessor(PacketProcessor):
     protocol = "TCP"
@@ -92,6 +137,7 @@ class TCPProcessor(PacketProcessor):
         dport = getattr(packet, "dport", "?")
         flags = getattr(packet, "flags", "?")
         print(f"[TCP] {src}:{sport} -> {dst}:{dport} | Flags: {flags}")
+        self._search_payload(packet)
 
 
 class UDPProcessor(PacketProcessor):
@@ -104,6 +150,7 @@ class UDPProcessor(PacketProcessor):
         src = getattr(packet, "src", "?")
         dst = getattr(packet, "dst", "?")
         print(f"[UDP] {src} -> {dst}")
+        self._search_payload(packet)
 
 
 class ICMPProcessor(PacketProcessor):
@@ -116,6 +163,7 @@ class ICMPProcessor(PacketProcessor):
         src = getattr(packet, "src", "?")
         dst = getattr(packet, "dst", "?")
         print(f"[ICMP] {src} -> {dst}")
+        self._search_payload(packet)
 
 
 # ------------------------------------------------------------------ sniffer
@@ -125,16 +173,17 @@ class Sniffer:
     """Capture packets on an interface, optionally writing them to a pcap."""
 
     def __init__(self, interface=None, filter_str=None,
-                 output_file=None, verbose=False):
+                 output_file=None, verbose=False, search=None):
         self.interface = interface
         self.filter_str = filter_str
         self.output_file = output_file
         self.verbose = verbose
+        self.search = search
         self.writer = None
         self.processors = [
-            TCPProcessor(),
-            UDPProcessor(),
-            ICMPProcessor(),
+            TCPProcessor(search=search),
+            UDPProcessor(search=search),
+            ICMPProcessor(search=search),
         ]
 
     def get_processor(self, protocol):
@@ -188,38 +237,19 @@ class Sniffer:
             self.writer.write(packet)
 
     def _dispatch(self, packet):
-        print("[DBG] dispatch called", flush=True)
-        print("[DBG] processors:",
-              [(type(p).__name__, getattr(p, "protocol", None))
-               for p in self.processors],
-              flush=True)
-        print("[DBG] packet repr:", repr(packet)[:120], flush=True)
-        print("[DBG] packet haslayer:",
-              getattr(packet, "haslayer", None), flush=True)
-
         for processor in self.processors:
             matcher = getattr(processor, "matches", None)
             if callable(matcher):
                 try:
-                    matched = matcher(packet)
-                except Exception as exc:
-                    print(f"[DBG] {type(processor).__name__}.matches "
-                          f"raised {exc!r}", flush=True)
-                    continue
-                print(f"[DBG] {type(processor).__name__}.matches -> "
-                      f"{matched}", flush=True)
-                if not matched:
+                    if not matcher(packet):
+                        continue
+                except Exception:
                     continue
             try:
-                print(f"[DBG] calling {type(processor).__name__}.process",
-                      flush=True)
                 processor.process(packet)
                 return True
-            except Exception as exc:
-                print(f"[DBG] {type(processor).__name__}.process raised "
-                      f"{exc!r}", flush=True)
+            except Exception:
                 continue
-        print("[DBG] no processor handled packet", flush=True)
         return False
 
     def _print_hexdump(self, packet):
@@ -245,6 +275,8 @@ def parse_args(argv=None):
                         help="Write captured packets to a pcap file.")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Print a hexdump after each packet summary.")
+    parser.add_argument("-s", "--search", default=None, metavar="STRING",
+                        help="Search payloads for STRING and alert on match.")
     return parser.parse_args(argv)
 
 
@@ -256,6 +288,7 @@ def main(argv=None):
         filter_str=args.filter,
         output_file=args.write,
         verbose=args.verbose,
+        search=args.search,
     ).start()
 
 
