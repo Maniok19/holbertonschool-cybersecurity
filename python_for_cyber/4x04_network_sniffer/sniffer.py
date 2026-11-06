@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from scapy.all import sniff, IP, TCP, UDP, ICMP
+from scapy.all import sniff
+from scapy.layers.inet import IP, TCP, UDP, ICMP
 
 
 def packet_handler(packet):
