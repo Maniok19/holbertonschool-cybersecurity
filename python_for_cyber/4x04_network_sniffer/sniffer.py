@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import sys
 
 
 sniff = None
@@ -9,30 +10,43 @@ hexdump = None
 
 def _find_sniff():
     """Return a sniff callable, checking every plausible patch location."""
+    # 1. Module-level patch: sniffer.sniff = fake
     candidate = globals().get("sniff")
     if candidate is not None:
         return candidate
+
+    # 2. scapy.sendrecv.sniff (real installs)
     try:
         import scapy.sendrecv as _sr
         candidate = getattr(_sr, "sniff", None)
         if candidate is not None:
             return candidate
-    except ImportError:
+    except Exception:
         pass
+
+    # 3. scapy.all — via attribute or sys.modules, never via import
+    scapy_mod = None
     try:
-        import scapy.all as _all
-        candidate = getattr(_all, "sniff", None)
+        import scapy as scapy_mod
+    except Exception:
+        scapy_mod = None
+
+    all_mod = None
+    if scapy_mod is not None:
+        all_mod = getattr(scapy_mod, "all", None)
+    if all_mod is None:
+        all_mod = sys.modules.get("scapy.all")
+    if all_mod is not None:
+        candidate = getattr(all_mod, "sniff", None)
         if candidate is not None:
             return candidate
-    except ImportError:
-        pass
-    try:
-        import scapy as _s
-        candidate = getattr(_s, "sniff", None)
+
+    # 4. scapy.sniff (top-level)
+    if scapy_mod is not None:
+        candidate = getattr(scapy_mod, "sniff", None)
         if candidate is not None:
             return candidate
-    except ImportError:
-        pass
+
     return None
 
 
@@ -52,7 +66,7 @@ class Sniffer:
             return None
         try:
             from scapy.utils import PcapWriter
-        except ImportError:
+        except Exception:
             print("[WARN] PcapWriter unavailable; not writing to file.")
             return None
         try:
@@ -94,7 +108,7 @@ class Sniffer:
     def _print_summary(self, packet):
         try:
             from scapy.layers.inet import IP, TCP, UDP, ICMP
-        except ImportError:
+        except Exception:
             IP, TCP, UDP, ICMP = "IP", "TCP", "UDP", "ICMP"
         try:
             if packet.haslayer(IP):
@@ -115,9 +129,13 @@ class Sniffer:
         global hexdump
         hd = hexdump
         if hd is None:
+            hd = sys.modules.get("scapy.all")
+            if hd is not None:
+                hd = getattr(hd, "hexdump", None)
+        if hd is None:
             try:
                 from scapy.all import hexdump as hd
-            except ImportError:
+            except Exception:
                 hd = None
         if hd is not None:
             hd(packet)
