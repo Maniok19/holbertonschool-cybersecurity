@@ -3,7 +3,6 @@
 import argparse
 
 from scapy.all import sniff
-from scapy.utils import PcapWriter
 
 
 def packet_handler(packet):
@@ -30,22 +29,12 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="PySniffer - a simple Scapy-based packet sniffer."
     )
-    parser.add_argument(
-        "-i", "--interface",
-        default=None,
-        help="Interface to sniff on (e.g., eth0).",
-    )
-    parser.add_argument(
-        "-f", "--filter",
-        default=None,
-        help="BPF filter string (e.g., 'tcp port 80').",
-    )
-    parser.add_argument(
-        "-w", "--write",
-        default=None,
-        metavar="FILE",
-        help="Write captured packets to a pcap file (e.g., out.pcap).",
-    )
+    parser.add_argument("-i", "--interface", default=None,
+                        help="Interface to sniff on (e.g., eth0).")
+    parser.add_argument("-f", "--filter", default=None,
+                        help="BPF filter string (e.g., 'tcp port 80').")
+    parser.add_argument("-w", "--write", default=None, metavar="FILE",
+                        help="Write captured packets to a pcap file.")
     return parser.parse_args()
 
 
@@ -55,6 +44,7 @@ def main():
 
     writer = None
     if args.write:
+        from scapy.utils import PcapWriter
         writer = PcapWriter(args.write, append=True, sync=True)
 
     def handler(packet):
