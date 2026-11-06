@@ -21,8 +21,10 @@ def packet_handler(packet):
 
 def main():
     print("[INFO] PySniffer initialized.")
-    sniff(prn=packet_handler)
-    print("[INFO] Stopping capture...")
+    try:
+        sniff(prn=packet_handler)
+    except KeyboardInterrupt:
+        print("\n[INFO] Stopping capture...")
 
 
 if __name__ == "__main__":
