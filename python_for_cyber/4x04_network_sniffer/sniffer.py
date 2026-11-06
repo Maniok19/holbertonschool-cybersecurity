@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import argparse
+
 from scapy.all import sniff
 
 
@@ -23,10 +25,28 @@ def packet_handler(packet):
             print(f"[ICMP] {src} -> {dst}")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="PySniffer - a simple Scapy-based packet sniffer."
+    )
+    parser.add_argument(
+        "-i", "--interface",
+        default=None,
+        help="Interface to sniff on (e.g., eth0).",
+    )
+    parser.add_argument(
+        "-f", "--filter",
+        default=None,
+        help="BPF filter string (e.g., 'tcp port 80').",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     print("[INFO] PySniffer initialized.")
     try:
-        sniff(prn=packet_handler)
+        sniff(iface=args.interface, filter=args.filter, prn=packet_handler)
     except KeyboardInterrupt:
         pass
     finally:
