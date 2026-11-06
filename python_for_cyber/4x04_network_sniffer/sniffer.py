@@ -49,6 +49,8 @@ def _find_sniff():
 
 
 class PacketProcessor:
+    """Base class for protocol-specific packet processors."""
+
     protocol = "UNKNOWN"
     layer_name = None
     requires = ()
@@ -80,7 +82,9 @@ class PacketProcessor:
         raise NotImplementedError
 
     def _raw_payload(self, packet):
+        """Return raw payload bytes from any plausible location."""
         candidates = []
+
         try:
             raw = packet["Raw"]
             load = getattr(raw, "load", None)
@@ -88,15 +92,17 @@ class PacketProcessor:
                 candidates.append(load)
             elif isinstance(raw, (bytes, bytearray)):
                 candidates.append(bytes(raw))
-        except Exception as exc:
-            print(f"[DBG] packet['Raw'] failed: {exc!r}", flush=True)
+        except Exception:
+            pass
+
         load = getattr(packet, "load", None)
         if load is not None:
             candidates.append(load)
+
         payload = getattr(packet, "payload", None)
         if isinstance(payload, (bytes, bytearray)):
             candidates.append(bytes(payload))
-        print(f"[DBG] _raw_payload candidates: {candidates!r}", flush=True)
+
         for data in candidates:
             if isinstance(data, (bytes, bytearray)):
                 return bytes(data)
@@ -105,20 +111,17 @@ class PacketProcessor:
         return None
 
     def _search_payload(self, packet):
-        print(f"[DBG] _search_payload search={self.search!r}", flush=True)
         if not self.search:
             return
         payload = self._raw_payload(packet)
-        print(f"[DBG] extracted payload={payload!r}", flush=True)
         if payload is None:
             return
         try:
             text = payload.decode("utf-8", errors="replace")
         except Exception:
             return
-        print(f"[DBG] decoded text={text!r}", flush=True)
         if self.search in text:
-            print("[ALERT] Payload Match found!", flush=True)
+            print("[ALERT] Payload Match found!")
 
 
 class TCPProcessor(PacketProcessor):
@@ -166,6 +169,8 @@ class ICMPProcessor(PacketProcessor):
 
 
 class Sniffer:
+    """Capture packets on an interface, optionally writing them to a pcap."""
+
     def __init__(self, interface=None, filter_str=None,
                  output_file=None, verbose=False, search=None):
         self.interface = interface
@@ -179,7 +184,6 @@ class Sniffer:
             UDPProcessor(search=search),
             ICMPProcessor(search=search),
         ]
-        print(f"[DBG] Sniffer init search={search!r}", flush=True)
 
     def get_processor(self, protocol):
         for processor in self.processors:
@@ -202,7 +206,6 @@ class Sniffer:
             return None
 
     def start(self):
-        print(f"[DBG] start() search={self.search!r}", flush=True)
         call_sniff = sniff
         if call_sniff is None:
             call_sniff = _find_sniff()
@@ -224,8 +227,6 @@ class Sniffer:
         return self._dispatch(packet)
 
     def _process_packet(self, packet):
-        print(f"[DBG] _process_packet called pkt={repr(packet)[:80]}",
-              flush=True)
         if packet is None:
             return
         self._dispatch(packet)
@@ -235,8 +236,7 @@ class Sniffer:
             self.writer.write(packet)
 
     def _dispatch(self, packet):
-        print(f"[DBG] _dispatch search={self.search!r} "
-              f"nproc={len(self.processors)}", flush=True)
+        """Call the first matching processor exactly once."""
         for processor in self.processors:
             try:
                 processor.search = self.search
@@ -245,22 +245,15 @@ class Sniffer:
             matcher = getattr(processor, "matches", None)
             if callable(matcher):
                 try:
-                    matched = matcher(packet)
-                except Exception as exc:
-                    print(f"[DBG] {type(processor).__name__}.matches "
-                          f"raised {exc!r}", flush=True)
-                    continue
-                print(f"[DBG] {type(processor).__name__}.matches -> "
-                      f"{matched}", flush=True)
-                if not matched:
+                    if not matcher(packet):
+                        continue
+                except Exception:
                     continue
             try:
                 processor.process(packet)
-            except Exception as exc:
-                print(f"[DBG] {type(processor).__name__}.process raised "
-                      f"{exc!r}", flush=True)
+            except Exception:
+                pass
             return True
-        print("[DBG] no processor handled packet", flush=True)
         return False
 
     def _print_hexdump(self, packet):
@@ -278,11 +271,16 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="PySniffer - a simple Scapy-based packet sniffer."
     )
-    parser.add_argument("-i", "--interface", default=None)
-    parser.add_argument("-f", "--filter", default=None)
-    parser.add_argument("-w", "--write", default=None, metavar="FILE")
-    parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("-s", "--search", default=None, metavar="STRING")
+    parser.add_argument("-i", "--interface", default=None,
+                        help="Interface to sniff on (e.g., eth0).")
+    parser.add_argument("-f", "--filter", default=None,
+                        help="BPF filter string (e.g., 'tcp port 80').")
+    parser.add_argument("-w", "--write", default=None, metavar="FILE",
+                        help="Write captured packets to a pcap file.")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Print a hexdump after each packet summary.")
+    parser.add_argument("-s", "--search", default=None, metavar="STRING",
+                        help="Search payloads for STRING and alert on match.")
     return parser.parse_args(argv)
 
 
