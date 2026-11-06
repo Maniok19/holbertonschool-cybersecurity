@@ -15,6 +15,11 @@ except Exception:
     hexdump = None
 
 
+# Module-level search string. Set by main() from --search. Also settable
+# directly by tests: sniffer._global_search = "password".
+_global_search = None
+
+
 def _find_sniff():
     if sniff is not None:
         return sniff
@@ -49,8 +54,6 @@ def _find_sniff():
 
 
 class PacketProcessor:
-    """Base class for protocol-specific packet processors."""
-
     protocol = "UNKNOWN"
     layer_name = None
     requires = ()
@@ -82,9 +85,7 @@ class PacketProcessor:
         raise NotImplementedError
 
     def _raw_payload(self, packet):
-        """Return raw payload bytes from any plausible location."""
         candidates = []
-
         try:
             raw = packet["Raw"]
             load = getattr(raw, "load", None)
@@ -94,15 +95,12 @@ class PacketProcessor:
                 candidates.append(bytes(raw))
         except Exception:
             pass
-
         load = getattr(packet, "load", None)
         if load is not None:
             candidates.append(load)
-
         payload = getattr(packet, "payload", None)
         if isinstance(payload, (bytes, bytearray)):
             candidates.append(bytes(payload))
-
         for data in candidates:
             if isinstance(data, (bytes, bytearray)):
                 return bytes(data)
@@ -111,7 +109,8 @@ class PacketProcessor:
         return None
 
     def _search_payload(self, packet):
-        if not self.search:
+        search = self.search or _global_search
+        if not search:
             return
         payload = self._raw_payload(packet)
         if payload is None:
@@ -120,7 +119,7 @@ class PacketProcessor:
             text = payload.decode("utf-8", errors="replace")
         except Exception:
             return
-        if self.search in text:
+        if search in text:
             print("[ALERT] Payload Match found!")
 
 
@@ -165,12 +164,26 @@ class ICMPProcessor(PacketProcessor):
         self._search_payload(packet)
 
 
+# --------------------------------------------------- module-level callback
+# The earlier tests (test_keyboard_interrupt, test_pcap_writer,
+# test_verbose_hexdump) expected a module-level packet_handler. Keep it
+# as a thin shim over the class so both API shapes work.
+
+
+def packet_handler(packet, verbose=False, search=None):
+    """Module-level callback usable as sniff(prn=packet_handler)."""
+    if search is not None:
+        global _global_search
+        _global_search = search
+    sniffer = Sniffer(search=search if search is not None else _global_search)
+    sniffer.verbose = verbose
+    sniffer._process_packet(packet)
+
+
 # ------------------------------------------------------------------ sniffer
 
 
 class Sniffer:
-    """Capture packets on an interface, optionally writing them to a pcap."""
-
     def __init__(self, interface=None, filter_str=None,
                  output_file=None, verbose=False, search=None):
         self.interface = interface
@@ -236,7 +249,6 @@ class Sniffer:
             self.writer.write(packet)
 
     def _dispatch(self, packet):
-        """Call the first matching processor exactly once."""
         for processor in self.processors:
             try:
                 processor.search = self.search
@@ -271,21 +283,18 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="PySniffer - a simple Scapy-based packet sniffer."
     )
-    parser.add_argument("-i", "--interface", default=None,
-                        help="Interface to sniff on (e.g., eth0).")
-    parser.add_argument("-f", "--filter", default=None,
-                        help="BPF filter string (e.g., 'tcp port 80').")
-    parser.add_argument("-w", "--write", default=None, metavar="FILE",
-                        help="Write captured packets to a pcap file.")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Print a hexdump after each packet summary.")
-    parser.add_argument("-s", "--search", default=None, metavar="STRING",
-                        help="Search payloads for STRING and alert on match.")
+    parser.add_argument("-i", "--interface", default=None)
+    parser.add_argument("-f", "--filter", default=None)
+    parser.add_argument("-w", "--write", default=None, metavar="FILE")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-s", "--search", default=None, metavar="STRING")
     return parser.parse_args(argv)
 
 
 def main(argv=None):
+    global _global_search
     args = parse_args(argv)
+    _global_search = args.search
     print("[INFO] PySniffer initialized.")
     Sniffer(
         interface=args.interface,
