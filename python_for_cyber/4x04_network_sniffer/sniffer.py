@@ -57,7 +57,6 @@ class PacketProcessor:
     excludes = ()
 
     def matches(self, packet):
-        # 1. Real Scapy path: ask the packet itself.
         if self.layer_name is not None:
             has = getattr(packet, "haslayer", None)
             if callable(has):
@@ -67,7 +66,6 @@ class PacketProcessor:
                 except Exception:
                     pass
 
-        # 2. Attribute-based fallback for fake/stub packets.
         for attr in self.excludes:
             if hasattr(packet, attr):
                 return False
@@ -133,23 +131,17 @@ class Sniffer:
         self.output_file = output_file
         self.verbose = verbose
         self.writer = None
-        # Order matters: TCP checked first, then UDP, then ICMP.
         self.processors = [
             TCPProcessor(),
             UDPProcessor(),
             ICMPProcessor(),
         ]
 
-    # ------------------------------------------------------------ lookup API
-
     def get_processor(self, protocol):
-        """Return the processor whose protocol matches, or None."""
         for processor in self.processors:
             if getattr(processor, "protocol", None) == protocol:
                 return processor
         return None
-
-    # ---------------------------------------------------------- lifecycle API
 
     def _open_writer(self):
         if not self.output_file:
@@ -183,10 +175,7 @@ class Sniffer:
                 self.writer.close()
             print("\n[INFO] Stopping capture...", flush=True)
 
-    # ------------------------------------------------------- packet dispatch
-
     def process(self, packet):
-        """Public API: dispatch one packet to the right processor."""
         return self._dispatch(packet)
 
     def _process_packet(self, packet):
@@ -199,20 +188,38 @@ class Sniffer:
             self.writer.write(packet)
 
     def _dispatch(self, packet):
-        """Hand the packet to the first processor that matches."""
+        print("[DBG] dispatch called", flush=True)
+        print("[DBG] processors:",
+              [(type(p).__name__, getattr(p, "protocol", None))
+               for p in self.processors],
+              flush=True)
+        print("[DBG] packet repr:", repr(packet)[:120], flush=True)
+        print("[DBG] packet haslayer:",
+              getattr(packet, "haslayer", None), flush=True)
+
         for processor in self.processors:
             matcher = getattr(processor, "matches", None)
             if callable(matcher):
                 try:
-                    if not matcher(packet):
-                        continue
-                except Exception:
+                    matched = matcher(packet)
+                except Exception as exc:
+                    print(f"[DBG] {type(processor).__name__}.matches "
+                          f"raised {exc!r}", flush=True)
+                    continue
+                print(f"[DBG] {type(processor).__name__}.matches -> "
+                      f"{matched}", flush=True)
+                if not matched:
                     continue
             try:
+                print(f"[DBG] calling {type(processor).__name__}.process",
+                      flush=True)
                 processor.process(packet)
                 return True
-            except Exception:
+            except Exception as exc:
+                print(f"[DBG] {type(processor).__name__}.process raised "
+                      f"{exc!r}", flush=True)
                 continue
+        print("[DBG] no processor handled packet", flush=True)
         return False
 
     def _print_hexdump(self, packet):
@@ -224,9 +231,6 @@ class Sniffer:
                 hd = getattr(all_mod, "hexdump", None)
         if hd is not None:
             hd(packet)
-
-
-# --------------------------------------------------------------------- cli
 
 
 def parse_args(argv=None):
