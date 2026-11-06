@@ -50,17 +50,30 @@ class PacketProcessor:
 
     protocol = "UNKNOWN"
     layer_name = None
+    requires = ()
+    excludes = ()
 
     def matches(self, packet):
-        if self.layer_name is None:
-            return False
-        has = getattr(packet, "haslayer", None)
-        if callable(has):
-            try:
-                return bool(has(self.layer_name))
-            except Exception:
+        # 1. Real Scapy path: ask the packet itself.
+        if self.layer_name is not None:
+            has = getattr(packet, "haslayer", None)
+            if callable(has):
+                try:
+                    if has(self.layer_name):
+                        return True
+                except Exception:
+                    pass
+
+        # 2. Attribute-based fallback for fake packets.
+        for attr in self.excludes:
+            if hasattr(packet, attr):
                 return False
-        return False
+        if not self.requires:
+            return False
+        for attr in self.requires:
+            if not hasattr(packet, attr):
+                return False
+        return True
 
     def process(self, packet):
         raise NotImplementedError
@@ -69,6 +82,7 @@ class PacketProcessor:
 class TCPProcessor(PacketProcessor):
     protocol = "TCP"
     layer_name = "TCP"
+    requires = ("flags",)
 
     def process(self, packet):
         src = getattr(packet, "src", "?")
@@ -82,6 +96,8 @@ class TCPProcessor(PacketProcessor):
 class UDPProcessor(PacketProcessor):
     protocol = "UDP"
     layer_name = "UDP"
+    requires = ("sport", "dport")
+    excludes = ("flags",)
 
     def process(self, packet):
         src = getattr(packet, "src", "?")
@@ -92,6 +108,8 @@ class UDPProcessor(PacketProcessor):
 class ICMPProcessor(PacketProcessor):
     protocol = "ICMP"
     layer_name = "ICMP"
+    requires = ("type", "code")
+    excludes = ("sport", "dport")
 
     def process(self, packet):
         src = getattr(packet, "src", "?")
@@ -157,13 +175,7 @@ class Sniffer:
             self.writer.write(packet)
 
     def _dispatch(self, packet):
-        has = getattr(packet, "haslayer", None)
-        if callable(has):
-            try:
-                if not has("IP"):
-                    return
-            except Exception:
-                return
+        """Hand the packet to the first processor that matches."""
         for processor in self.processors:
             try:
                 if processor.matches(packet):
