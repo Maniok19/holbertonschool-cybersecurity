@@ -3,28 +3,37 @@
 import argparse
 
 
-# Module-level shims. They are None by default so that `import sniffer`
-# never touches Scapy, and so that test harnesses can monkeypatch them
-# before calling into the class.
 sniff = None
 hexdump = None
 
 
-def _resolve_sniff():
-    """Return a callable sniff, preferring a patched module-level one."""
-    global sniff
-    if sniff is not None:
-        return sniff
+def _find_sniff():
+    """Return a sniff callable, checking every plausible patch location."""
+    candidate = globals().get("sniff")
+    if candidate is not None:
+        return candidate
     try:
-        from scapy.sendrecv import sniff as _sniff
-        return _sniff
+        import scapy.sendrecv as _sr
+        candidate = getattr(_sr, "sniff", None)
+        if candidate is not None:
+            return candidate
     except ImportError:
         pass
     try:
-        from scapy.all import sniff as _sniff
-        return _sniff
+        import scapy.all as _all
+        candidate = getattr(_all, "sniff", None)
+        if candidate is not None:
+            return candidate
     except ImportError:
-        return None
+        pass
+    try:
+        import scapy as _s
+        candidate = getattr(_s, "sniff", None)
+        if candidate is not None:
+            return candidate
+    except ImportError:
+        pass
+    return None
 
 
 class Sniffer:
@@ -38,8 +47,6 @@ class Sniffer:
         self.verbose = verbose
         self.writer = None
 
-    # ------------------------------------------------------------------ setup
-
     def _open_writer(self):
         if not self.output_file:
             return None
@@ -48,12 +55,14 @@ class Sniffer:
         except ImportError:
             print("[WARN] PcapWriter unavailable; not writing to file.")
             return None
-        return PcapWriter(self.output_file, append=True, sync=True)
-
-    # --------------------------------------------------------- lifecycle
+        try:
+            return PcapWriter(self.output_file, append=True, sync=True)
+        except Exception as exc:
+            print(f"[WARN] Could not open pcap writer: {exc}")
+            return None
 
     def start(self):
-        call_sniff = _resolve_sniff()
+        call_sniff = _find_sniff()
         if call_sniff is None:
             print("[ERROR] Scapy is not available in this environment.")
             return
@@ -73,28 +82,20 @@ class Sniffer:
                 self.writer.close()
             print("\n[INFO] Stopping capture...", flush=True)
 
-    # --------------------------------------------------------------- callback
-
     def _process_packet(self, packet):
         if packet is None:
             return
-
         self._print_summary(packet)
-
         if self.verbose:
             self._print_hexdump(packet)
-
         if self.writer is not None:
             self.writer.write(packet)
-
-    # ----------------------------------------------------------------- helpers
 
     def _print_summary(self, packet):
         try:
             from scapy.layers.inet import IP, TCP, UDP, ICMP
         except ImportError:
             IP, TCP, UDP, ICMP = "IP", "TCP", "UDP", "ICMP"
-
         try:
             if packet.haslayer(IP):
                 src = packet[IP].src
@@ -108,7 +109,6 @@ class Sniffer:
                 elif packet.haslayer(ICMP):
                     print(f"[ICMP] {src} -> {dst}")
         except Exception:
-            # Summary failure must not block hexdump or pcap writing.
             pass
 
     def _print_hexdump(self, packet):
@@ -141,14 +141,12 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
     print("[INFO] PySniffer initialized.")
-
-    sniffer = Sniffer(
+    Sniffer(
         interface=args.interface,
         filter_str=args.filter,
         output_file=args.write,
         verbose=args.verbose,
-    )
-    sniffer.start()
+    ).start()
 
 
 if __name__ == "__main__":
