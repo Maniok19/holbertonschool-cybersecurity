@@ -334,7 +334,6 @@ class Sniffer:
 
         self._dispatch(packet)
 
-        # Update statistics for the identified protocol.
         if self._last_protocol in self.stats:
             self.stats[self._last_protocol] += 1
 
@@ -351,26 +350,17 @@ class Sniffer:
     def _dispatch(self, packet):
         self._last_protocol = None
 
-        # Search payload exactly once per packet,
-        # independently of protocol identification.
         if self.search or _global_search:
             self.searcher.search = self.search
             self.searcher._check_search(packet)
 
-        # Protocol identification and processing.
         for processor in self.processors:
             try:
-                matcher = getattr(processor, "matches", None)
-
-                if callable(matcher):
-                    if not matcher(packet):
-                        continue
+                if not processor.matches(packet):
+                    continue
 
                 processor.process(packet)
-
-                # Remember identified protocol.
                 self._last_protocol = processor.protocol
-
                 return True
 
             except Exception:
@@ -384,17 +374,16 @@ class Sniffer:
 
     def _print_stats(self):
         print("\n========== PACKET STATISTICS ==========")
-        print(f"{'Protocol':<15} {'Packets':>10}")
-        print("---------------------------------------")
 
         total = 0
 
         for protocol, count in self.stats.items():
-            print(f"{protocol:<15} {count:>10}")
+            print(f"{protocol}: {count}")
+
             total += count
 
         print("---------------------------------------")
-        print(f"{'TOTAL':<15} {total:>10}")
+        print(f"TOTAL: {total}")
         print("=======================================")
 
     # ------------------------------------------------------------------
