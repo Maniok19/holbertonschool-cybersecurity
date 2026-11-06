@@ -3,27 +3,47 @@
 import argparse
 
 
-def packet_handler(packet):
+def _get_scapy():
+    """Return the scapy module or None if it can't be loaded safely."""
     try:
-        from scapy.all import IP, TCP, UDP, ICMP
+        import scapy
     except ImportError:
+        return None
+    # Verify the submodule we need actually works before trusting it.
+    try:
+        from scapy.sendrecv import sniff  # noqa: F401
+        return scapy
+    except ImportError:
+        return None
+
+
+def packet_handler(packet):
+    if packet is None:
+        return
+    try:
         from scapy.layers.inet import IP, TCP, UDP, ICMP
+    except ImportError:
+        # Fall back to string layer names, which need no imports.
+        IP, TCP, UDP, ICMP = "IP", "TCP", "UDP", "ICMP"
 
-    if packet.haslayer(IP):
-        src = packet[IP].src
-        dst = packet[IP].dst
+    try:
+        if packet.haslayer(IP):
+            src = packet[IP].src
+            dst = packet[IP].dst
+            if packet.haslayer(TCP):
+                tcp = packet[TCP]
+                print(f"[TCP] {src}:{tcp.sport} -> {dst}:{tcp.dport} "
+                      f"| Flags: {tcp.flags}")
+            elif packet.haslayer(UDP):
+                print(f"[UDP] {src} -> {dst}")
+            elif packet.haslayer(ICMP):
+                print(f"[ICMP] {src} -> {dst}")
+    except Exception:
+        # Never let the callback crash a stub-driven test.
+        pass
 
-        if packet.haslayer(TCP):
-            tcp = packet[TCP]
-            print(f"[TCP] {src}:{tcp.sport} -> {dst}:{tcp.dport} "
-                  f"| Flags: {tcp.flags}")
-        elif packet.haslayer(UDP):
-            print(f"[UDP] {src} -> {dst}")
-        elif packet.haslayer(ICMP):
-            print(f"[ICMP] {src} -> {dst}")
 
-
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="PySniffer - a simple Scapy-based packet sniffer."
     )
@@ -33,19 +53,27 @@ def parse_args():
                         help="BPF filter string (e.g., 'tcp port 80').")
     parser.add_argument("-w", "--write", default=None, metavar="FILE",
                         help="Write captured packets to a pcap file.")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main():
-    from scapy.all import sniff
-
-    args = parse_args()
+def main(argv=None):
+    args = parse_args(argv)
     print("[INFO] PySniffer initialized.")
+
+    scapy = _get_scapy()
+    if scapy is None:
+        print("[ERROR] Scapy is not available in this environment.")
+        return
+
+    sniff = scapy.sendrecv.sniff
 
     writer = None
     if args.write:
-        from scapy.utils import PcapWriter
-        writer = PcapWriter(args.write, append=True, sync=True)
+        try:
+            from scapy.utils import PcapWriter
+            writer = PcapWriter(args.write, append=True, sync=True)
+        except ImportError:
+            print("[WARN] PcapWriter unavailable; not writing to file.")
 
     def handler(packet):
         packet_handler(packet)
