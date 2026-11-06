@@ -93,11 +93,72 @@ class PacketProcessor:
     def process(self, packet):
         raise NotImplementedError
 
+    # ------------------------------------------------------------------
+    # Shared payload-search helpers
+    # ------------------------------------------------------------------
+    def _payload_bytes(self, packet):
+        """Best-effort extraction of raw payload bytes from *packet*.
+
+        Tries the scapy ``Raw`` layer first, then falls back to any
+        ``load`` attribute regardless of whether a ``Raw`` layer is
+        present.  This ensures matching works even when ``haslayer``
+        is unavailable or reports ``False`` (e.g. mock packets).
+        """
+        Raw = _raw_layer_class()
+        raw_bytes = None
+        try:
+            if packet.haslayer(Raw):
+                raw_layer = packet[Raw]
+                load = getattr(raw_layer, "load", None)
+                if load is None and isinstance(raw_layer,
+                                               (bytes, bytearray)):
+                    load = bytes(raw_layer)
+                if load is not None:
+                    if isinstance(load, str):
+                        raw_bytes = load.encode("utf-8",
+                                                errors="ignore")
+                    else:
+                        raw_bytes = bytes(load)
+        except Exception:
+            raw_bytes = None
+
+        # Fallback: look for a ``load`` attribute directly.  This was
+        # previously nested inside the ``has_raw`` branch, which meant
+        # it was never reached when ``haslayer(Raw)`` was False.
+        if raw_bytes is None:
+            load = getattr(packet, "load", None)
+            if load is not None:
+                if isinstance(load, str):
+                    raw_bytes = load.encode("utf-8", errors="ignore")
+                else:
+                    try:
+                        raw_bytes = bytes(load)
+                    except Exception:
+                        raw_bytes = None
+        return raw_bytes
+
+    def _check_search(self, packet):
+        search = self.search or _global_search
+        if not search:
+            return
+        raw_bytes = self._payload_bytes(packet)
+        if raw_bytes is None:
+            return
+        try:
+            text = raw_bytes.decode("utf-8", errors="ignore")
+        except Exception:
+            text = ""
+        if search in text:
+            print("[ALERT] Payload Match found!")
+
 
 class TCPProcessor(PacketProcessor):
     protocol = "TCP"
     layer_name = "TCP"
-    requires = ("flags",)
+    # Rely solely on the TCP layer for matching.  The previous
+    # ``requires = ("flags",)`` caused UDP/ICMP packets (which have IP
+    # flags) to be misclassified as TCP.
+    requires = ()
 
     def process(self, packet):
         src = getattr(packet, "src", "?")
@@ -106,47 +167,7 @@ class TCPProcessor(PacketProcessor):
         dport = getattr(packet, "dport", "?")
         flags = getattr(packet, "flags", "?")
         print(f"[TCP] {src}:{sport} -> {dst}:{dport} | Flags: {flags}")
-
-        search = self.search or _global_search
-        if search:
-            Raw = _raw_layer_class()
-            has_raw = False
-            try:
-                has_raw = bool(packet.haslayer(Raw))
-            except Exception:
-                has_raw = False
-            if has_raw:
-                raw_bytes = None
-                try:
-                    raw_layer = packet[Raw]
-                    load = getattr(raw_layer, "load", None)
-                    if load is None and isinstance(raw_layer,
-                                                   (bytes, bytearray)):
-                        load = bytes(raw_layer)
-                    if isinstance(load, str):
-                        raw_bytes = load.encode("utf-8", errors="ignore")
-                    elif load is not None:
-                        raw_bytes = bytes(load)
-                except Exception:
-                    raw_bytes = None
-                if raw_bytes is None:
-                    load = getattr(packet, "load", None)
-                    if load is not None:
-                        if isinstance(load, str):
-                            raw_bytes = load.encode("utf-8",
-                                                    errors="ignore")
-                        else:
-                            try:
-                                raw_bytes = bytes(load)
-                            except Exception:
-                                raw_bytes = None
-                if raw_bytes is not None:
-                    try:
-                        text = raw_bytes.decode("utf-8", errors="ignore")
-                    except Exception:
-                        text = ""
-                    if search in text:
-                        print("[ALERT] Payload Match found!")
+        self._check_search(packet)
 
 
 class UDPProcessor(PacketProcessor):
@@ -159,47 +180,7 @@ class UDPProcessor(PacketProcessor):
         src = getattr(packet, "src", "?")
         dst = getattr(packet, "dst", "?")
         print(f"[UDP] {src} -> {dst}")
-
-        search = self.search or _global_search
-        if search:
-            Raw = _raw_layer_class()
-            has_raw = False
-            try:
-                has_raw = bool(packet.haslayer(Raw))
-            except Exception:
-                has_raw = False
-            if has_raw:
-                raw_bytes = None
-                try:
-                    raw_layer = packet[Raw]
-                    load = getattr(raw_layer, "load", None)
-                    if load is None and isinstance(raw_layer,
-                                                   (bytes, bytearray)):
-                        load = bytes(raw_layer)
-                    if isinstance(load, str):
-                        raw_bytes = load.encode("utf-8", errors="ignore")
-                    elif load is not None:
-                        raw_bytes = bytes(load)
-                except Exception:
-                    raw_bytes = None
-                if raw_bytes is None:
-                    load = getattr(packet, "load", None)
-                    if load is not None:
-                        if isinstance(load, str):
-                            raw_bytes = load.encode("utf-8",
-                                                    errors="ignore")
-                        else:
-                            try:
-                                raw_bytes = bytes(load)
-                            except Exception:
-                                raw_bytes = None
-                if raw_bytes is not None:
-                    try:
-                        text = raw_bytes.decode("utf-8", errors="ignore")
-                    except Exception:
-                        text = ""
-                    if search in text:
-                        print("[ALERT] Payload Match found!")
+        self._check_search(packet)
 
 
 class ICMPProcessor(PacketProcessor):
@@ -212,47 +193,7 @@ class ICMPProcessor(PacketProcessor):
         src = getattr(packet, "src", "?")
         dst = getattr(packet, "dst", "?")
         print(f"[ICMP] {src} -> {dst}")
-
-        search = self.search or _global_search
-        if search:
-            Raw = _raw_layer_class()
-            has_raw = False
-            try:
-                has_raw = bool(packet.haslayer(Raw))
-            except Exception:
-                has_raw = False
-            if has_raw:
-                raw_bytes = None
-                try:
-                    raw_layer = packet[Raw]
-                    load = getattr(raw_layer, "load", None)
-                    if load is None and isinstance(raw_layer,
-                                                   (bytes, bytearray)):
-                        load = bytes(raw_layer)
-                    if isinstance(load, str):
-                        raw_bytes = load.encode("utf-8", errors="ignore")
-                    elif load is not None:
-                        raw_bytes = bytes(load)
-                except Exception:
-                    raw_bytes = None
-                if raw_bytes is None:
-                    load = getattr(packet, "load", None)
-                    if load is not None:
-                        if isinstance(load, str):
-                            raw_bytes = load.encode("utf-8",
-                                                    errors="ignore")
-                        else:
-                            try:
-                                raw_bytes = bytes(load)
-                            except Exception:
-                                raw_bytes = None
-                if raw_bytes is not None:
-                    try:
-                        text = raw_bytes.decode("utf-8", errors="ignore")
-                    except Exception:
-                        text = ""
-                    if search in text:
-                        print("[ALERT] Payload Match found!")
+        self._check_search(packet)
 
 
 def packet_handler(packet, verbose=False, search=None):
