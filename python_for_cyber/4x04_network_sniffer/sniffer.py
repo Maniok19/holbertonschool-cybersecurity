@@ -15,8 +15,6 @@ except Exception:
     hexdump = None
 
 
-# Module-level search string. Set by main() from --search. Also settable
-# directly by tests: sniffer._global_search = "password".
 _global_search = None
 
 
@@ -84,37 +82,49 @@ class PacketProcessor:
     def process(self, packet):
         raise NotImplementedError
 
-    def _raw_payload(self, packet):
-        candidates = []
-        try:
-            raw = packet["Raw"]
-            load = getattr(raw, "load", None)
-            if load is not None:
-                candidates.append(load)
-            elif isinstance(raw, (bytes, bytearray)):
-                candidates.append(bytes(raw))
-        except Exception:
-            pass
-        load = getattr(packet, "load", None)
-        if load is not None:
-            candidates.append(load)
-        payload = getattr(packet, "payload", None)
-        if isinstance(payload, (bytes, bytearray)):
-            candidates.append(bytes(payload))
-        for data in candidates:
-            if isinstance(data, (bytes, bytearray)):
-                return bytes(data)
-            if isinstance(data, str):
-                return data.encode("utf-8", errors="replace")
-        return None
-
     def _search_payload(self, packet):
         search = self.search or _global_search
         if not search:
             return
-        payload = self._raw_payload(packet)
+
+        # Explicitly check for the Raw layer, per the instructions.
+        try:
+            from scapy.all import Raw
+        except Exception:
+            Raw = "Raw"
+
+        raw_present = False
+        has = getattr(packet, "haslayer", None)
+        if callable(has):
+            try:
+                raw_present = bool(has(Raw)) or bool(has("Raw"))
+            except Exception:
+                raw_present = False
+
+        payload = None
+        if raw_present:
+            try:
+                raw = packet[Raw]
+                payload = getattr(raw, "load", None)
+                if payload is None and isinstance(raw, (bytes, bytearray)):
+                    payload = bytes(raw)
+            except Exception:
+                payload = None
+
+        # Fallback paths for stub packets that don't model Raw properly.
+        if payload is None:
+            load = getattr(packet, "load", None)
+            if load is not None:
+                payload = load
+        if payload is None:
+            p = getattr(packet, "payload", None)
+            if isinstance(p, (bytes, bytearray)):
+                payload = bytes(p)
         if payload is None:
             return
+
+        if isinstance(payload, str):
+            payload = payload.encode("utf-8", errors="replace")
         try:
             text = payload.decode("utf-8", errors="replace")
         except Exception:
@@ -165,13 +175,9 @@ class ICMPProcessor(PacketProcessor):
 
 
 # --------------------------------------------------- module-level callback
-# The earlier tests (test_keyboard_interrupt, test_pcap_writer,
-# test_verbose_hexdump) expected a module-level packet_handler. Keep it
-# as a thin shim over the class so both API shapes work.
 
 
 def packet_handler(packet, verbose=False, search=None):
-    """Module-level callback usable as sniff(prn=packet_handler)."""
     if search is not None:
         global _global_search
         _global_search = search
