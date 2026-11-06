@@ -43,8 +43,6 @@ class Sniffer:
             return None
         return PcapWriter(self.output_file, append=True, sync=True)
 
-    # ---------------------------------------------------------------- lifecycle
-
     def start(self):
         self._scapy = _get_scapy()
         if self._scapy is None:
