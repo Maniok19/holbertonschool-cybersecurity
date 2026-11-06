@@ -50,6 +50,92 @@ def _find_sniff():
     return None
 
 
+# ---------------------------------------------------------------- processors
+
+
+class PacketProcessor:
+    """Base class for protocol-specific packet processors."""
+
+    protocol = "UNKNOWN"
+
+    def matches(self, packet):
+        """Return True if this processor handles the given packet."""
+        return False
+
+    def process(self, packet):
+        """Format and print a one-line summary for the packet."""
+        raise NotImplementedError
+
+    # Helpers used by subclasses ---------------------------------------
+
+    def _ip_layer(self, packet):
+        try:
+            from scapy.layers.inet import IP
+        except Exception:
+            IP = "IP"
+        return packet[IP]
+
+    def _has(self, packet, layer):
+        try:
+            return packet.haslayer(layer)
+        except Exception:
+            return False
+
+
+class TCPProcessor(PacketProcessor):
+    protocol = "TCP"
+
+    def matches(self, packet):
+        try:
+            from scapy.layers.inet import TCP
+        except Exception:
+            TCP = "TCP"
+        return self._has(packet, TCP)
+
+    def process(self, packet):
+        try:
+            from scapy.layers.inet import TCP
+        except Exception:
+            TCP = "TCP"
+        tcp = packet[TCP]
+        ip = self._ip_layer(packet)
+        print(f"[TCP] {ip.src}:{tcp.sport} -> {ip.dst}:{tcp.dport} "
+              f"| Flags: {tcp.flags}")
+
+
+class UDPProcessor(PacketProcessor):
+    protocol = "UDP"
+
+    def matches(self, packet):
+        try:
+            from scapy.layers.inet import UDP
+        except Exception:
+            UDP = "UDP"
+        return self._has(packet, UDP)
+
+    def process(self, packet):
+        ip = self._ip_layer(packet)
+        print(f"[UDP] {ip.src} -> {ip.dst}")
+
+
+class ICMPProcessor(PacketProcessor):
+    protocol = "ICMP"
+
+    def matches(self, packet):
+        try:
+            from scapy.layers.inet import ICMP
+        except Exception:
+            ICMP = "ICMP"
+        return self._has(packet, ICMP)
+
+    def process(self, packet):
+        ip = self._ip_layer(packet)
+        print(f"[ICMP] {ip.src} -> {ip.dst}")
+
+
+# ------------------------------------------ sniffer
+
+
 class Sniffer:
     """Capture packets on an interface, optionally writing them to a pcap."""
 
@@ -60,6 +146,12 @@ class Sniffer:
         self.output_file = output_file
         self.verbose = verbose
         self.writer = None
+        # Order matters: check TCP/UDP/ICMP against the same IP layer.
+        self.processors = [
+            TCPProcessor(),
+            UDPProcessor(),
+            ICMPProcessor(),
+        ]
 
     def _open_writer(self):
         if not self.output_file:
@@ -97,31 +189,35 @@ class Sniffer:
     def _process_packet(self, packet):
         if packet is None:
             return
-        self._print_summary(packet)
+
+        self._dispatch(packet)
+
         if self.verbose:
             self._print_hexdump(packet)
+
         if self.writer is not None:
             self.writer.write(packet)
 
-    def _print_summary(self, packet):
+    def _dispatch(self, packet):
+        """Hand the packet to the first processor that matches."""
         try:
-            from scapy.layers.inet import IP, TCP, UDP, ICMP
+            from scapy.layers.inet import IP
         except Exception:
-            IP, TCP, UDP, ICMP = "IP", "TCP", "UDP", "ICMP"
+            IP = "IP"
+
         try:
-            if packet.haslayer(IP):
-                src = packet[IP].src
-                dst = packet[IP].dst
-                if packet.haslayer(TCP):
-                    tcp = packet[TCP]
-                    print(f"[TCP] {src}:{tcp.sport} -> {dst}:{tcp.dport} "
-                          f"| Flags: {tcp.flags}")
-                elif packet.haslayer(UDP):
-                    print(f"[UDP] {src} -> {dst}")
-                elif packet.haslayer(ICMP):
-                    print(f"[ICMP] {src} -> {dst}")
+            if not packet.haslayer(IP):
+                return
         except Exception:
-            pass
+            return
+
+        for processor in self.processors:
+            try:
+                if processor.matches(packet):
+                    processor.process(packet)
+                    return
+            except Exception:
+                continue
 
     def _print_hexdump(self, packet):
         global hexdump
