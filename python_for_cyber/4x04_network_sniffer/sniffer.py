@@ -3,6 +3,9 @@
 import argparse
 
 
+hexdump = None  # module-level shim; patchable, but no Scapy import here
+
+
 def _get_scapy():
     """Return the scapy module or None if it can't be loaded safely."""
     try:
@@ -17,8 +20,12 @@ def _get_scapy():
 
 
 def packet_handler(packet, verbose=False):
+    global hexdump
+
     if packet is None:
         return
+
+    # --- summary line ---
     try:
         from scapy.layers.inet import IP, TCP, UDP, ICMP
     except ImportError:
@@ -36,12 +43,20 @@ def packet_handler(packet, verbose=False):
                 print(f"[UDP] {src} -> {dst}")
             elif packet.haslayer(ICMP):
                 print(f"[ICMP] {src} -> {dst}")
-
-        if verbose:
-            from scapy.all import hexdump
-            hexdump(packet)
     except Exception:
+        # Summary failure must not block hexdump.
         pass
+
+    # --- verbose hexdump ---
+    if verbose:
+        hd = hexdump
+        if hd is None:
+            try:
+                from scapy.all import hexdump as hd
+            except ImportError:
+                hd = None
+        if hd is not None:
+            hd(packet)
 
 
 def parse_args(argv=None):
