@@ -24,7 +24,9 @@ def main():
     try:
         sniff(prn=packet_handler)
     except KeyboardInterrupt:
-        print("\n[INFO] Stopping capture...")
+        pass
+    finally:
+        print("\n[INFO] Stopping capture...", flush=True)
 
 
 if __name__ == "__main__":
