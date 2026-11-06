@@ -6,8 +6,10 @@ import sys
 
 try:
     from scapy.all import sniff
+    _original_sniff = sniff
 except Exception:
     sniff = None
+    _original_sniff = None
 
 try:
     from scapy.all import hexdump
@@ -19,31 +21,33 @@ _global_search = None
 
 
 def _find_sniff():
-    # Look up a live sniff first so test monkeypatches are honored.
-    try:
-        import scapy.sendrecv as _sr
-        candidate = getattr(_sr, "sniff", None)
-        if candidate is not None:
-            return candidate
-    except Exception:
-        pass
+    # Honor a monkeypatched module-level sniff (e.g. pysniffer.sniff).
+    if sniff is not None and sniff is not _original_sniff:
+        return sniff
 
-    try:
-        import scapy.all as _all
-        candidate = getattr(_all, "sniff", None)
-        if candidate is not None:
-            return candidate
-    except Exception:
-        pass
+    candidates = []
+    for modname in ("scapy.all", "scapy.sendrecv"):
+        try:
+            mod = sys.modules.get(modname)
+            if mod is None:
+                mod = __import__(modname, fromlist=["sniff"])
+            cand = getattr(mod, "sniff", None)
+            if cand is not None:
+                candidates.append(cand)
+        except Exception:
+            pass
 
-    all_mod = sys.modules.get("scapy.all")
-    if all_mod is not None:
-        candidate = getattr(all_mod, "sniff", None)
-        if candidate is not None:
-            return candidate
+    # Prefer a candidate that was monkeypatched (differs from the
+    # object bound at import time).
+    for cand in candidates:
+        if cand is not _original_sniff:
+            return cand
 
     if sniff is not None:
         return sniff
+
+    if candidates:
+        return candidates[0]
 
     return None
 
@@ -322,7 +326,13 @@ class Sniffer:
             self._print_stats()
 
     def process(self, packet):
-        return self._dispatch(packet)
+        """Process a single packet; return True if it matched."""
+        matched = self._dispatch(packet)
+
+        if self._last_protocol in self.stats:
+            self.stats[self._last_protocol] += 1
+
+        return matched
 
     # ------------------------------------------------------------------
     # Packet callback
@@ -332,10 +342,7 @@ class Sniffer:
         if packet is None:
             return
 
-        self._dispatch(packet)
-
-        if self._last_protocol in self.stats:
-            self.stats[self._last_protocol] += 1
+        self.process(packet)
 
         if self.verbose:
             self._print_hexdump(packet)
