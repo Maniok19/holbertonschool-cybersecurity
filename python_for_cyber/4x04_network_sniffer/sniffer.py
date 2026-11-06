@@ -45,6 +45,9 @@ def _find_sniff():
     return None
 
 
+# ---------------------------------------------------------------- processors
+
+
 class PacketProcessor:
     """Base class for protocol-specific packet processors."""
 
@@ -64,7 +67,7 @@ class PacketProcessor:
                 except Exception:
                     pass
 
-        # 2. Attribute-based fallback for fake packets.
+        # 2. Attribute-based fallback for fake/stub packets.
         for attr in self.excludes:
             if hasattr(packet, attr):
                 return False
@@ -117,6 +120,9 @@ class ICMPProcessor(PacketProcessor):
         print(f"[ICMP] {src} -> {dst}")
 
 
+# ------------------------------------------------------------------ sniffer
+
+
 class Sniffer:
     """Capture packets on an interface, optionally writing them to a pcap."""
 
@@ -127,11 +133,23 @@ class Sniffer:
         self.output_file = output_file
         self.verbose = verbose
         self.writer = None
+        # Order matters: TCP checked first, then UDP, then ICMP.
         self.processors = [
             TCPProcessor(),
             UDPProcessor(),
             ICMPProcessor(),
         ]
+
+    # ------------------------------------------------------------ lookup API
+
+    def get_processor(self, protocol):
+        """Return the processor whose protocol matches, or None."""
+        for processor in self.processors:
+            if getattr(processor, "protocol", None) == protocol:
+                return processor
+        return None
+
+    # ---------------------------------------------------------- lifecycle API
 
     def _open_writer(self):
         if not self.output_file:
@@ -165,6 +183,12 @@ class Sniffer:
                 self.writer.close()
             print("\n[INFO] Stopping capture...", flush=True)
 
+    # ------------------------------------------------------- packet dispatch
+
+    def process(self, packet):
+        """Public API: dispatch one packet to the right processor."""
+        return self._dispatch(packet)
+
     def _process_packet(self, packet):
         if packet is None:
             return
@@ -177,12 +201,19 @@ class Sniffer:
     def _dispatch(self, packet):
         """Hand the packet to the first processor that matches."""
         for processor in self.processors:
+            matcher = getattr(processor, "matches", None)
+            if callable(matcher):
+                try:
+                    if not matcher(packet):
+                        continue
+                except Exception:
+                    continue
             try:
-                if processor.matches(packet):
-                    processor.process(packet)
-                    return
+                processor.process(packet)
+                return True
             except Exception:
                 continue
+        return False
 
     def _print_hexdump(self, packet):
         global hexdump
@@ -193,6 +224,9 @@ class Sniffer:
                 hd = getattr(all_mod, "hexdump", None)
         if hd is not None:
             hd(packet)
+
+
+# --------------------------------------------------------------------- cli
 
 
 def parse_args(argv=None):
