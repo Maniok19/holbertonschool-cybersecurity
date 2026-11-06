@@ -373,16 +373,13 @@ class Sniffer:
     # ------------------------------------------------------------------
 
     def _print_stats(self):
+        total = sum(self.stats.values())
+
         print("\n========== PACKET STATISTICS ==========")
-
-        total = 0
-
-        for protocol, count in self.stats.items():
-            print(f"{protocol} packets: {count}")
-            total += count
-
-        print("---------------------------------------")
-        print(f"TOTAL packets: {total}")
+        print(f"TCP: {self.stats['TCP']}")
+        print(f"UDP: {self.stats['UDP']}")
+        print(f"ICMP: {self.stats['ICMP']}")
+        print(f"TOTAL: {total}")
         print("=======================================", flush=True)
 
     # ------------------------------------------------------------------
