@@ -16,7 +16,7 @@ def packet_handler(packet):
         if packet.haslayer(TCP):
             tcp = packet[TCP]
             print(f"[TCP] {src}:{tcp.sport} -> {dst}:{tcp.dport} "
-                f"| Flags: {tcp.flags}")
+                  f"| Flags: {tcp.flags}")
         elif packet.haslayer(UDP):
             print(f"[UDP] {src} -> {dst}")
         elif packet.haslayer(ICMP):
