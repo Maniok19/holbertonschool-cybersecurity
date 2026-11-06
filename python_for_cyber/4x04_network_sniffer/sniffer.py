@@ -3,18 +3,26 @@
 import argparse
 
 
-hexdump = None  # module-level shim; patchable, but no Scapy import here
+# Module-level shims. They are None by default so that `import sniffer`
+# never touches Scapy, and so that test harnesses can monkeypatch them
+# before calling into the class.
+sniff = None
+hexdump = None
 
 
-def _get_scapy():
-    """Return the scapy module or None if it can't be loaded safely."""
+def _resolve_sniff():
+    """Return a callable sniff, preferring a patched module-level one."""
+    global sniff
+    if sniff is not None:
+        return sniff
     try:
-        import scapy
+        from scapy.sendrecv import sniff as _sniff
+        return _sniff
     except ImportError:
-        return None
+        pass
     try:
-        from scapy.sendrecv import sniff  # noqa: F401
-        return scapy
+        from scapy.all import sniff as _sniff
+        return _sniff
     except ImportError:
         return None
 
@@ -29,7 +37,6 @@ class Sniffer:
         self.output_file = output_file
         self.verbose = verbose
         self.writer = None
-        self._scapy = None
 
     # ------------------------------------------------------------------ setup
 
@@ -43,17 +50,18 @@ class Sniffer:
             return None
         return PcapWriter(self.output_file, append=True, sync=True)
 
+    # --------------------------------------------------------- lifecycle
+
     def start(self):
-        self._scapy = _get_scapy()
-        if self._scapy is None:
+        call_sniff = _resolve_sniff()
+        if call_sniff is None:
             print("[ERROR] Scapy is not available in this environment.")
             return
 
-        sniff = self._scapy.sendrecv.sniff
         self.writer = self._open_writer()
 
         try:
-            sniff(
+            call_sniff(
                 iface=self.interface,
                 filter=self.filter_str,
                 prn=self._process_packet,
