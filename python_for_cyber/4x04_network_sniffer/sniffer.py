@@ -21,7 +21,8 @@ def packet_handler(packet):
 
 def main():
     print("[INFO] PySniffer initialized.")
-    sniff(count=5, prn=packet_handler)
+    sniff(prn=packet_handler)
+    print("[INFO] Stopping capture...")
 
 
 if __name__ == "__main__":
