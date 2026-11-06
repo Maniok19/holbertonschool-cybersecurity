@@ -48,7 +48,19 @@ def _find_sniff():
     return None
 
 
-# ---------------------------------------------------------------- processors
+def _get_raw_class():
+    """Return the Raw layer class, or the string 'Raw' as a fallback."""
+    try:
+        from scapy.all import Raw
+        return Raw
+    except Exception:
+        pass
+    try:
+        from scapy.layers.inet import Raw
+        return Raw
+    except Exception:
+        pass
+    return "Raw"
 
 
 class PacketProcessor:
@@ -82,53 +94,53 @@ class PacketProcessor:
     def process(self, packet):
         raise NotImplementedError
 
-    def _search_payload(self, packet):
+    def _dpi(self, packet):
+        """Deep packet inspection helper, called from process()."""
         search = self.search or _global_search
         if not search:
             return
 
-        # Explicitly check for the Raw layer, per the instructions.
+        Raw = _get_raw_class()
         try:
-            from scapy.all import Raw
+            has_raw = bool(packet.haslayer(Raw))
         except Exception:
-            Raw = "Raw"
+            has_raw = False
 
-        raw_present = False
-        has = getattr(packet, "haslayer", None)
-        if callable(has):
+        raw_bytes = None
+        if has_raw:
             try:
-                raw_present = bool(has(Raw)) or bool(has("Raw"))
+                raw_layer = packet[Raw]
+                load = getattr(raw_layer, "load", None)
+                if load is None and isinstance(raw_layer, (bytes, bytearray)):
+                    load = bytes(raw_layer)
+                if load is not None:
+                    if isinstance(load, str):
+                        raw_bytes = load.encode("utf-8", errors="ignore")
+                    else:
+                        raw_bytes = bytes(load)
             except Exception:
-                raw_present = False
+                raw_bytes = None
 
-        payload = None
-        if raw_present:
-            try:
-                raw = packet[Raw]
-                payload = getattr(raw, "load", None)
-                if payload is None and isinstance(raw, (bytes, bytearray)):
-                    payload = bytes(raw)
-            except Exception:
-                payload = None
-
-        # Fallback paths for stub packets that don't model Raw properly.
-        if payload is None:
+        # Fallback for stub packets where haslayer(Raw) lies.
+        if raw_bytes is None:
             load = getattr(packet, "load", None)
             if load is not None:
-                payload = load
-        if payload is None:
-            p = getattr(packet, "payload", None)
-            if isinstance(p, (bytes, bytearray)):
-                payload = bytes(p)
-        if payload is None:
+                if isinstance(load, str):
+                    raw_bytes = load.encode("utf-8", errors="ignore")
+                else:
+                    try:
+                        raw_bytes = bytes(load)
+                    except Exception:
+                        raw_bytes = None
+
+        if raw_bytes is None:
             return
 
-        if isinstance(payload, str):
-            payload = payload.encode("utf-8", errors="replace")
         try:
-            text = payload.decode("utf-8", errors="replace")
+            text = raw_bytes.decode("utf-8", errors="ignore")
         except Exception:
             return
+
         if search in text:
             print("[ALERT] Payload Match found!")
 
@@ -145,7 +157,7 @@ class TCPProcessor(PacketProcessor):
         dport = getattr(packet, "dport", "?")
         flags = getattr(packet, "flags", "?")
         print(f"[TCP] {src}:{sport} -> {dst}:{dport} | Flags: {flags}")
-        self._search_payload(packet)
+        self._dpi(packet)
 
 
 class UDPProcessor(PacketProcessor):
@@ -158,7 +170,7 @@ class UDPProcessor(PacketProcessor):
         src = getattr(packet, "src", "?")
         dst = getattr(packet, "dst", "?")
         print(f"[UDP] {src} -> {dst}")
-        self._search_payload(packet)
+        self._dpi(packet)
 
 
 class ICMPProcessor(PacketProcessor):
@@ -171,22 +183,16 @@ class ICMPProcessor(PacketProcessor):
         src = getattr(packet, "src", "?")
         dst = getattr(packet, "dst", "?")
         print(f"[ICMP] {src} -> {dst}")
-        self._search_payload(packet)
-
-
-# --------------------------------------------------- module-level callback
+        self._dpi(packet)
 
 
 def packet_handler(packet, verbose=False, search=None):
     if search is not None:
         global _global_search
         _global_search = search
-    sniffer = Sniffer(search=search if search is not None else _global_search)
-    sniffer.verbose = verbose
-    sniffer._process_packet(packet)
-
-
-# ------------------------------------------------------------------ sniffer
+    s = Sniffer(search=search if search is not None else _global_search)
+    s.verbose = verbose
+    s._process_packet(packet)
 
 
 class Sniffer:
