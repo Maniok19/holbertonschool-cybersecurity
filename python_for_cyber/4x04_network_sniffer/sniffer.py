@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 
 from scapy.all import sniff
-from scapy.layers.inet import IP, TCP, UDP, ICMP
 
 
 def packet_handler(packet):
-    if (packet.haslayer(IP)):
+    try:
+        from scapy.all import IP, TCP, UDP, ICMP
+    except ImportError:
+        from scapy.layers.inet import IP, TCP, UDP, ICMP
+
+    if packet.haslayer(IP):
         src = packet[IP].src
         dst = packet[IP].dst
 
         if packet.haslayer(TCP):
-            flags = packet[TCP].flags
-            sport = packet[TCP].sport
-            dport = packet[TCP].dport
-            print(f"[TCP] {src}:{sport} -> {dst}:{dport} | Flags: {flags}")
+            tcp = packet[TCP]
+            print(f"[TCP] {src}:{tcp.sport} -> {dst}:{tcp.dport} | Flags: {tcp.flags}")
         elif packet.haslayer(UDP):
             print(f"[UDP] {src} -> {dst}")
         elif packet.haslayer(ICMP):
