@@ -19,8 +19,7 @@ _global_search = None
 
 
 def _find_sniff():
-    if sniff is not None:
-        return sniff
+    # Look up a live ``sniff`` first so test monkeypatches are honored.
     try:
         import scapy.sendrecv as _sr
         candidate = getattr(_sr, "sniff", None)
@@ -29,13 +28,8 @@ def _find_sniff():
     except Exception:
         pass
     try:
-        import scapy as _s
-        candidate = getattr(_s, "all", None)
-        if candidate is not None:
-            candidate = getattr(candidate, "sniff", None)
-            if candidate is not None:
-                return candidate
-        candidate = getattr(_s, "sniff", None)
+        import scapy.all as _all
+        candidate = getattr(_all, "sniff", None)
         if candidate is not None:
             return candidate
     except Exception:
@@ -45,6 +39,8 @@ def _find_sniff():
         candidate = getattr(all_mod, "sniff", None)
         if candidate is not None:
             return candidate
+    if sniff is not None:
+        return sniff
     return None
 
 
@@ -122,9 +118,9 @@ class PacketProcessor:
         except Exception:
             raw_bytes = None
 
-        # Fallback: look for a ``load`` attribute directly.  This was
-        # previously nested inside the ``has_raw`` branch, which meant
-        # it was never reached when ``haslayer(Raw)`` was False.
+        # Fallback: look for a ``load`` attribute directly.  This must
+        # not be nested inside the ``has_raw`` branch, otherwise it is
+        # never reached when ``haslayer(Raw)`` is False.
         if raw_bytes is None:
             load = getattr(packet, "load", None)
             if load is not None:
@@ -155,9 +151,9 @@ class PacketProcessor:
 class TCPProcessor(PacketProcessor):
     protocol = "TCP"
     layer_name = "TCP"
-    # Rely solely on the TCP layer for matching.  The previous
-    # ``requires = ("flags",)`` caused UDP/ICMP packets (which have IP
-    # flags) to be misclassified as TCP.
+    # Rely solely on the TCP layer for matching.  A ``requires`` entry
+    # such as ("flags",) caused UDP/ICMP packets (which have IP flags)
+    # to be misclassified as TCP.
     requires = ()
 
     def process(self, packet):
@@ -241,9 +237,9 @@ class Sniffer:
             return None
 
     def start(self):
-        call_sniff = sniff
-        if call_sniff is None:
-            call_sniff = _find_sniff()
+        # Always re-resolve ``sniff`` at call time so monkeypatches made
+        # by tests (e.g. replacing scapy.all.sniff) take effect.
+        call_sniff = _find_sniff()
         if call_sniff is None:
             print("[ERROR] Scapy is not available in this environment.")
             return
