@@ -68,7 +68,6 @@ class PacketProcessor:
                         return True
                 except Exception:
                     pass
-
         for attr in self.excludes:
             if hasattr(packet, attr):
                 return False
@@ -82,36 +81,36 @@ class PacketProcessor:
     def process(self, packet):
         raise NotImplementedError
 
-    # Helpers shared by subclasses -------------------------------------
-
     def _raw_payload(self, packet):
-        """Return the Raw layer bytes if present, else None."""
-        has = getattr(packet, "haslayer", None)
-        if callable(has):
-            try:
-                if not has("Raw"):
-                    return None
-            except Exception:
-                return None
-        elif not hasattr(packet, "load"):
-            return None
+        """Return raw payload bytes from any plausible location."""
+        candidates = []
+
         try:
             raw = packet["Raw"]
+            load = getattr(raw, "load", None)
+            if load is not None:
+                candidates.append(load)
+            elif isinstance(raw, (bytes, bytearray)):
+                candidates.append(bytes(raw))
         except Exception:
-            raw = None
-        if raw is None:
-            raw = getattr(packet, "load", None)
-        if raw is None:
-            return None
-        data = getattr(raw, "load", raw)
-        if isinstance(data, (bytes, bytearray)):
-            return bytes(data)
-        if isinstance(data, str):
-            return data.encode("utf-8", errors="replace")
+            pass
+
+        load = getattr(packet, "load", None)
+        if load is not None:
+            candidates.append(load)
+
+        payload = getattr(packet, "payload", None)
+        if isinstance(payload, (bytes, bytearray)):
+            candidates.append(bytes(payload))
+
+        for data in candidates:
+            if isinstance(data, (bytes, bytearray)):
+                return bytes(data)
+            if isinstance(data, str):
+                return data.encode("utf-8", errors="replace")
         return None
 
     def _search_payload(self, packet):
-        """Print an alert if the configured search string is in the payload."""
         if not self.search:
             return
         payload = self._raw_payload(packet)
@@ -237,6 +236,7 @@ class Sniffer:
             self.writer.write(packet)
 
     def _dispatch(self, packet):
+        """Call the first matching processor exactly once."""
         for processor in self.processors:
             matcher = getattr(processor, "matches", None)
             if callable(matcher):
@@ -247,9 +247,9 @@ class Sniffer:
                     continue
             try:
                 processor.process(packet)
-                return True
             except Exception:
-                continue
+                pass
+            return True
         return False
 
     def _print_hexdump(self, packet):
