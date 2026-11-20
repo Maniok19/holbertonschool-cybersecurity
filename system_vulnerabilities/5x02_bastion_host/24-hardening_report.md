@@ -9,13 +9,13 @@
 
 ## 1. Executive Summary
 
-This report documents the comprehensive security hardening applied to the NovaTech Solutions bastion host. The objective was to minimize the attack surface, enforce the principle of least privilege, and mitigate common vectors for privilege escalation and lateral movement.
+This report documents the comprehensive security hardening applied to the NovaTech Solutions bastion host. The primary objective of this engagement was to minimize the attack surface, enforce the principle of least privilege, and mitigate common vectors for privilege escalation and lateral movement in preparation for DMZ deployment. 
 
-Through the implementation of kernel-level network defenses, strict filesystem mount controls, service minimization, and access restrictions, the system's Lynis Hardening Index improved from **62 to 84**, a **22-point increase**. Critical warnings were reduced by **78%** (from 18 to 4). The system is now considered secure for DMZ deployment, pending final CISO sign-off and the implementation of the remaining recommendations outlined in Section 5.
+By implementing kernel-level network defenses, strict filesystem mount controls, service minimization, and access restrictions, the system's Lynis Hardening Index improved from a baseline of 62 to a final score of 84—a 22-point increase. Critical warnings were reduced by 78% (from 18 to 4). The system is now considered significantly hardened and secure for deployment, pending final CISO sign-off and the implementation of the remaining recommendations outlined in Section 5.
 
 ---
 
-## 2. Baseline Assessment (Pre-Hardening)
+## 2. Baseline Assessment
 
 An initial Lynis security audit was conducted to establish a baseline before any modifications were made. The system exhibited several default configurations that posed significant risks for an internet-facing server.
 
@@ -23,13 +23,13 @@ An initial Lynis security audit was conducted to establish a baseline before any
 *   **Tests Performed:** 256
 *   **Warnings:** 18
 *   **Suggestions:** 45
-*   **Critical Findings (Baseline):**
+*   **Key Findings Before Hardening:**
     *   IP forwarding was enabled (risk of network pivoting).
     *   ICMP redirects were accepted and sent (Man-in-the-Middle risk).
     *   Reverse path filtering was disabled (IP spoofing risk).
-    *   Development tools (gcc, g++, make) and network tools (netcat, nmap) were installed.
-    *   Dangerous custom SUID binary found (`/usr/local/bin/backup`).
-    *   `/tmp` was mounted with execution permissions allowed.
+    *   Development tools (gcc, g++, make) and network tools (netcat, nmap) were installed, providing attackers with tools to compile exploits.
+    *   A dangerous custom SUID binary was found at `/usr/local/bin/backup`.
+    *   `/tmp` was mounted with execution permissions allowed, allowing malware to run.
 
 ---
 
@@ -52,10 +52,7 @@ The hardening process was divided into several security domains. The following m
 ### 3.3. Privilege Escalation Defense (SUID/LOLBins)
 *   **Package Purging:** Removed development tools (`gcc`, `g++`, `make`, `gdb`) to prevent attackers from compiling local exploits.
 *   **Tool Restriction:** Changed permissions on dangerous network tools (`nc`, `nmap`, `tcpdump`) to `0750` (root-only access).
-*   **SUID Neutralization:** 
-    *   Conducted a full inventory of SUID/SGID binaries.
-    *   Removed the SUID bit from non-essential binaries (`mount`, `umount`, `newgrp`, and the custom `/usr/local/bin/backup`).
-    *   Preserved essential SUID binaries (`sudo`, `passwd`, `su`).
+*   **SUID Neutralization:** Conducted a full inventory of SUID/SGID binaries. Removed the SUID bit from non-essential binaries (`mount`, `umount`, `newgrp`, and the custom `/usr/local/bin/backup`), while preserving essential ones (`sudo`, `passwd`, `su`).
 
 ### 3.4. Access Control & Service Minimization
 *   **Root Account Lockdown:** Locked the root password (`passwd -l root`), forcing all administrative actions to be performed via `sudo` for accountability. Verified `PermitRootLogin no` in SSH.
